@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Sonnet end-to-end verifier for the /orchestrate skill. Runs the finished thing the way the user would (a web page in headless Playwright, a CLI's real output, a bot command dry run, one capped live call) and returns PASS or FAIL with text evidence. Never edits the code.
+description: Use before reporting user-visible work as finished, inside or outside /orchestrate. Sonnet end-to-end verifier. Runs the finished thing the way the user would (a web page in headless Playwright, a CLI's real output, a bot command dry run, one capped live call) and returns PASS or FAIL with text evidence. Never edits the code.
 tools: Read, Grep, Glob, Bash, ToolSearch, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_fill_form, mcp__playwright__browser_press_key, mcp__playwright__browser_select_option, mcp__playwright__browser_wait_for, mcp__playwright__browser_evaluate, mcp__playwright__browser_console_messages, mcp__playwright__browser_network_requests, mcp__playwright__browser_resize, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_close
 model: sonnet
 effort: medium

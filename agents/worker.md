@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Sonnet implementation worker for the /orchestrate skill. Makes one bounded code change limited to the files named in its brief and proves it with the brief's check command. Use only with a brief that gives Goal, Files and Check.
+description: Use for one bounded code change you can brief as Goal, Files and Check, normally from /orchestrate. Sonnet implementation worker. Makes one bounded code change limited to the files named in its brief and proves it with the brief's check command. Use only with a brief that gives Goal, Files and Check.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 effort: high

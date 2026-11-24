@@ -53,4 +53,10 @@ for x in a b c d; do t allow "unwritable state dir: $x" "$(j s16 "$P" "$ro/$x.py
 old=$HOME/.local/state/orchestrate/edit-gate-oldsession; : > "$old"; touch -d '3 days ago' "$old"
 t allow "pruning run" "$(j s17 "$P" "$R/a.py")"
 n=$((n+1)); [ -e "$old" ] && { echo "WRONG: stale state file not pruned"; fails=$((fails+1)); }
+H2=$W/home2; mkdir -p "$H2/Projects/new" "$H2/other"   # a second home that is NOT a git repo ($HOME above is one)
+t allow "non-git dir under ~/Projects counts (1)" "$(j s18 "$P" "$H2/Projects/new/a.py")" "$H2"
+t allow "(2)" "$(j s18 "$P" "$H2/Projects/new/b.py")" "$H2"
+t deny  "(3) refused" "$(j s18 "$P" "$H2/Projects/new/c.py")" "$H2"
+t allow "retry of the 3rd is allowed" "$(j s18 "$P" "$H2/Projects/new/c.py")" "$H2"
+for x in a b c d; do t allow "non-git dir elsewhere under HOME is skipped: $x" "$(j s19 "$P" "$H2/other/$x.py")" "$H2"; done
 echo "edit-gate cases=$n fails=$fails"; [ "$fails" -eq 0 ]

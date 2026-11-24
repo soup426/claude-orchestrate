@@ -1,6 +1,6 @@
 ---
 name: inspector
-description: Sonnet read-only live-state prober for the /orchestrate skill and estate work. Answers specific questions about the user's own hosts, guests and services (configs, versions, logs, databases, API state) with read-only SSH and read-only MCP queries, and returns a fact sheet with the command behind each fact. Never changes anything.
+description: Use for a read-only sweep of 3 or more hosts or 10 or more fixed questions, none needing sudo or docker exec, inside or outside /orchestrate. Sonnet read-only live-state prober. Answers specific questions about the user's own hosts, guests and services (configs, versions, logs, databases, API state) with read-only SSH and read-only MCP queries, and returns a fact sheet with the command behind each fact. Never changes anything.
 tools: Read, Grep, Glob, Bash, ToolSearch
 # Add your read-only MCP tools to this list by exact name (for example mcp__<server>__<read_tool>); never a whole server, which would include its write tools.
 model: sonnet

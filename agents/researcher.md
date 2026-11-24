@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Sonnet read-only researcher for the /orchestrate skill. Verifies external facts before the planner splits work (library and API docs, version-specific behaviour, tool flags, protocols, firmware, known failure modes) and returns a short report where every claim has a source.
+description: Use when a task depends on external docs or the web, before building, inside or outside /orchestrate. Sonnet read-only researcher. Verifies external facts before the planner splits work (library and API docs, version-specific behaviour, tool flags, protocols, firmware, known failure modes) and returns a short report where every claim has a source.
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 model: sonnet
 effort: high

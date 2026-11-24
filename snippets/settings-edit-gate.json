@@ -3,7 +3,21 @@
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": "\"$HOME\"/.claude/hooks/orchestrate-edit-gate.sh" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME\"/.claude/hooks/orchestrate-edit-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME\"/.claude/hooks/main-bash-cap-gate.sh"
+          }
+        ]
       }
     ]
   }

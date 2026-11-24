@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Sonnet test runner for the /orchestrate skill. Runs checks the worker did not run (wider, independent or hidden edge-case tests) and returns PASS or FAIL with only the failing lines. Never edits files.
+description: Use when a change needs a check its author did not run, inside or outside /orchestrate. Sonnet test runner. Runs checks the worker did not run (wider, independent or hidden edge-case tests) and returns PASS or FAIL with only the failing lines. Never edits files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

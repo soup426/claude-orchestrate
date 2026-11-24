@@ -1,6 +1,6 @@
 ---
 name: security
-description: Sonnet security reviewer for the /orchestrate skill and for anything about to leave the machine. Checks a change for leaks (secrets, tokens, private names and addresses) and for insecure code, and returns PASS or FAIL with path:line findings. Read-only.
+description: Use for code touching secrets, auth, network or untrusted input, and before anything leaves the machine, inside or outside /orchestrate. Sonnet security reviewer. Checks a change for leaks (secrets, tokens, private names and addresses) and for insecure code, and returns PASS or FAIL with path:line findings. Read-only.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: high

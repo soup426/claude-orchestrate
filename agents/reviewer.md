@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Sonnet code reviewer for the /orchestrate skill. Reviews one change against the acceptance criteria and returns PASS or FAIL with path:line findings. Read-only.
+description: Use before calling any self-written code done and before any deploy, inside or outside /orchestrate. Sonnet code reviewer. Reviews one change against the acceptance criteria and returns PASS or FAIL with path:line findings. Read-only.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: high
