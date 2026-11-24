@@ -86,7 +86,7 @@ For a choice rather than a change: "I can't decide between X and Y for this, you
 systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- bash -c 'cd . && bash tests/run.sh'
 ```
 
-(or plain `bash tests/run.sh`; it needs only bash, jq and python3, no systemd session.) It runs the guard regression cases, the report-gate cases, an install test in a throwaway `HOME`, and the proposal-writer tests. CI runs the same on every push.
+(or plain `bash tests/run.sh`; it needs only bash, jq and python3, no systemd session.) After installing, `bash scripts/check_drift.sh` compares your `~/.claude` with the repo: a hook that differs or is missing is an error (exit 1), and agents and skills that differ are listed, since your copies may carry private details on purpose. Run it in a SessionStart hook to hear about drift early. It runs the guard regression cases, the report-gate cases, an install test in a throwaway `HOME`, and the proposal-writer tests. CI runs the same on every push.
 
 ## Limits and known false positives
 
