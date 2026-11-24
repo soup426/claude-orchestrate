@@ -33,4 +33,46 @@ nb() { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","nam
 t block "NotebookEdit counts" s21 "nb $P/n.ipynb"
 both() { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"reviewer"}},{"type":"tool_use","name":"Edit","input":{"file_path":"%s"}}]}}\n' "$1"; }
 t block "edit after a reviewer call in the same message" s22 "both $P/a.py"
+bsh() { jq -cn --arg c "$1" '{type:"assistant",message:{content:[{type:"tool_use",name:"Bash",input:{command:$c}}]}}'; }
+t block "first change" s30 "edit Edit $P/a.py"
+t allow "same change, second stop" s30 "edit Edit $P/a.py"
+t block "a newer change blocks again" s30 "edit Edit $P/a.py; edit Edit $P/b.py"
+t allow "reviewed after the newer change" s30 "edit Edit $P/a.py; edit Edit $P/b.py; rev"
+t block "sed -i on code under ~/Projects" s31 "bsh \"sed -i s/a/b/ $P/a.py\""
+t block "redirect into ~/.claude/hooks" s32 "bsh \"printf x > \$HOME/.claude/hooks/g.sh\""
+t block "tilde path with tee" s33 "bsh 'echo x | tee ~/Projects/r/c.py'"
+t allow "reading code is not a change" s34 "bsh \"cat $P/a.py | grep x > /tmp/out\""
+t allow "sed -i on docs" s35 "bsh \"sed -i s/a/b/ $P/README.md\""
+t block "agent file edit counts although .md" s36 "edit Edit $HOME/.claude/agents/worker.md"
+t allow "CLAUDE.md is not an agent file" s37 "edit Edit $HOME/.claude/CLAUDE.md"
+t block "cp into ~/Projects" s39 "bsh \"cp /tmp/x.py $P/x.py\""
+t allow "cp out of ~/Projects" s40 "bsh \"cp $P/x.py /tmp/x.py\""
+t block "append redirect, no space" s41 "bsh \"echo x >>$P/a.py\""
+t allow "reviewed after the change" s38 "edit Edit $P/a.py; rev"
+# Bash write forms (quoted targets, fd redirects, prefixes, -t) count; reads do not
+k=50
+while IFS= read -r c; do k=$((k+1)); t block "write form: $c" "s$k" "bsh $(printf '%q' "$c")"; done <<EOF
+echo x > "\$HOME/Projects/x/a.py"
+echo x > '$P/a.py'
+echo x >> "$P/a.py"
+cp /tmp/a ~/Projects/x/a.py 2>&1
+cp -t ~/Projects/x /tmp/a
+cp --target-directory=$P a
+sudo tee $P/a.py < /tmp/x
+FOO=1 sed -i s/a/b/ ~/Projects/a.py
+if x; then cp a $P/b.py; fi
+timeout 5 mv a \${HOME}/Projects/b.py
+echo x &> $P/a.log
+printf x>$P/a.py
+cat <<X > $P/a.py
+EOF
+while IFS= read -r c; do k=$((k+1)); t allow "read form: $c" "s$k" "bsh $(printf '%q' "$c")"; done <<EOF
+cat $P/a.py > /tmp/x
+grep '>' $P/a.py
+cp $P/a.py /tmp/b
+echo "x > $P/a.py"
+ls $P 2>&1 | head
+git -C $P diff > /tmp/d
+grep -c ";" $P/a.py
+EOF
 echo "review-stop-gate cases=$n fails=$fails"; [ "$fails" -eq 0 ]

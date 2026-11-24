@@ -23,7 +23,7 @@ import sys
 READ = set("""cat head tail ls stat wc grep egrep fgrep zgrep zcat cut tr column jq uptime uname id whoami groups
 df du free lsblk findmnt lscpu lspci lsusb netstat ps pgrep lsof getent sha256sum md5sum b2sum diff cmp
 readlink realpath dirname basename which type nproc vmstat iostat mpstat dig nslookup host echo true false
-cd pwd sleep seq base64 pveversion lsmod""".split())
+cd pwd sleep seq base64 pveversion lsmod nixos-version sw_vers""".split())
 KEYWORDS = {"!"}  # no loops or conditionals: their variables and words would expand into options
 SAFE_DIRS = ("", "/bin", "/usr/bin", "/sbin", "/usr/sbin", "/usr/local/bin")
 OK_ENV = {"LC_ALL", "LANG", "LANGUAGE", "TZ", "COLUMNS", "LINES", "TERM", "NO_COLOR"}
@@ -271,6 +271,43 @@ def check_args(cmd, args, depth):
     if cmd == "qm":
         verb, _ = parse(args, set(), set())
         need(verb in ("config", "list", "status", "pending", "showcmd", "listsnapshot"), f"qm {verb}")
+        return
+    if cmd == "sshd":   # -T prints the effective config and exits; nothing else
+        only_opts(args, {"-T"}, {"-C"}, max_positional=0)   # no -f: a FIFO or /dev/zero would make root sshd read forever
+        need("-T" in args, "sshd without -T")
+        return
+    if cmd == "mount":   # listing only: no device or mount point
+        only_opts(args, {"-l"}, {"-t"}, max_positional=0)
+        return
+    if cmd == "ifconfig":   # show only: at most an interface name, no address or up/down
+        only_opts(args, {"-a", "-s", "-v"}, set(), max_positional=1)
+        pos = [x for x in args if not x.startswith("-")]
+        need(not pos or (re.fullmatch(r"[A-Za-z][A-Za-z0-9._@-]{0,15}", pos[0]) and pos[0] not in
+             ("up", "down", "promisc", "-promisc", "arp", "-arp", "add", "del", "delete", "alias", "-alias", "create", "destroy", "mtu", "netmask")),
+             "ifconfig with an action word or address")
+        return
+    if cmd in ("pvesm", "pveam"):
+        verb, rest = (args[0] if args else None), args[1:]
+        need(verb in (("status", "list", "path") if cmd == "pvesm" else ("list", "available")), f"{cmd} {verb}")
+        only_opts(rest, {"--enabled"}, {"--content", "--storage", "--target", "--vmid", "--section"}, max_positional=1)
+        return
+    if cmd in ("nc", "ncat", "netcat"):   # port check only: -z, no listen, exec or proxy
+        flags, pos, k = set(), 0, 0
+        while k < len(args):   # parse like getopt: -w takes a number, flags may combine, no --
+            x = args[k]
+            if x == "-w" and k + 1 < len(args) and re.fullmatch(r"[0-9]{1,3}", args[k + 1]):
+                k += 2
+                continue
+            if re.fullmatch(r"-w[0-9]{1,3}", x):
+                k += 1
+                continue
+            need(not x.startswith("-") or re.fullmatch(r"-[zvnu46]+", x), f"{cmd} option {x}")
+            if x.startswith("-"):
+                flags |= set(x[1:])
+            else:
+                pos += 1
+            k += 1
+        need("z" in flags and 1 <= pos <= 3, f"{cmd} without -z, or with more than host and ports")
         return
     if cmd == "pvesh":
         verb, _ = parse(args, set(), set())

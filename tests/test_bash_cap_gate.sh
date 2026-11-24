@@ -65,4 +65,42 @@ t deny  "estate-warm chained with a job is not light" "$(j s13 true 'estate-warm
 for x in "ssh pve bash -s 0</tmp/x.sh" "ssh pve bash -s < <(cat /tmp/x.sh)" "exec 3</tmp/x.sh; ssh pve bash -s <&3" "ssh pve <>/tmp/x.sh" "cat x | timeout 60 ssh pve bash" "cat x | env ssh pve" "cat x |& ssh pve" "cat x | { ssh pve bash; }"; do ask ask "$(j s14 false "$x")" "dodge asks: $x"; done
 t deny  "a command substitution makes estate-warm not light" "$(j s15 true 'estate-warm $(cargo build)')"
 ask ask "$(j s16 false "ssh -O check pve && cat /tmp/x | ssh pve bash -s")" "a pipe before the second ssh asks"
+t deny  "per command: first try of a dev server" "$(j s20 true 'npm run dev')"
+t allow "per command: the retry passes" "$(j s20 true 'npm run dev')"
+t deny  "per command: a different job still gets its nudge" "$(j s20 true 'python3 sweep.py')"
+# host-write check: read-only probes never ask; review owed or an outside source asks
+hw() {  # hw <want ask|none> <label> <command> [transcript] [cwd]
+  n=$((n+1)); out=$(printf '%s' "$3" | jq -Rsc --arg t "${4:-}" --arg d "${5:-}" '{session_id:"hw",tool_input:{command:.,run_in_background:false},transcript_path:$t,cwd:$d}' | HOME=$W/hp bash "$H" 2>/dev/null)
+  got=$(jq -r '.hookSpecificOutput.permissionDecision // "none"' <<<"${out:-{\}}" 2>/dev/null); [ "$got" = "$1" ] || { echo "WRONG want=$1 got=$got: $2"; fails=$((fails+1)); }
+}
+TE=$W/edited.jsonl; TR=$W/reviewed.jsonl
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s"}}]}}\n' "$W/hp/Projects/r/deploy/setup.sh" > "$TE"
+cp "$TE" "$TR"; printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"reviewer"}}]}}\n' >> "$TR"
+hw none "read-only pipeline after a probe" "ssh -O check h && ssh h 'journalctl -n 5' | grep x"
+hw none "a local pipe before a read-only probe" "ls | head; ssh h uptime"
+hw none "read-only probe while review is owed" "ssh h uptime" "$TE"
+hw ask  "host change while review is owed" "ssh pve 'systemctl restart app'" "$TE"
+hw none "host change after the reviewer ran" "ssh pve 'systemctl restart app'" "$TR"
+hw none "host change, no transcript" "ssh pve 'systemctl restart app'"
+hw ask  "repo script, but edited after the review" "ssh pve bash -s < $W/hp/Projects/r/deploy/setup.sh" "$TE"
+hw none "repo script, reviewed" "ssh pve bash -s < $W/hp/Projects/r/deploy/setup.sh" "$TR"
+hw none "relative repo script resolves against cwd" "ssh pve bash -s < deploy/setup.sh" "$TR" "$W/hp/Projects/r"
+hw ask  "relative path outside the repo" "ssh pve bash -s < ../../../x.sh" "$TR" "$W/hp/Projects/r"
+hw ask  "scp from a temp dir" "scp /tmp/x.sh pve:/root/"
+hw none "scp from the repo, reviewed" "scp $W/hp/Projects/r/deploy/setup.sh pve:/root/" "$TR"
+hw none "scp from the host to here" "scp pve:/etc/x /tmp/x"
+hw ask  "rsync from a temp dir" "rsync -a /tmp/site/ pve:/srv/"
+hw ask  "scp while review is owed" "scp $W/hp/Projects/r/deploy/setup.sh pve:/root/" "$TE"
+hw ask  "scp behind timeout" "timeout 60 scp /tmp/evil.sh pve:/usr/bin/" "$TR"
+hw ask  "scp behind env" "env scp /tmp/evil.sh pve:/" "$TR"
+hw ask  "scp in a subshell" "(scp /tmp/evil.sh pve:/)" "$TR"
+hw ask  "local path with a colon" "scp ./a:b.sh pve:/" "$TR"
+hw ask  "absolute path with a colon" "scp /tmp/x:y pve:/" "$TR"
+hw ask  "relative source after a cd" "cd /tmp && ssh pve sh < deploy/setup.sh" "$TR" "$W/hp/Projects/r"
+hw ask  "ssh-copy-id while review is owed" "ssh-copy-id pve" "$TE"
+hw ask  "sftp batch file from a temp dir" "sftp -b /tmp/b pve" "$TR"
+big=$(printf 'x%.0s' $(seq 1 140000))
+hw ask  "a huge command still asks" "ssh pve 'bash -s' < /tmp/x.sh # $big" "$TR"
+pad=$(printf 'scp %.0s' $(seq 1 3000))
+hw ask  "thousands of repeated scp words still ask" "$pad /tmp/x pve:/" "$TR"
 echo "bash-cap-gate cases=$n fails=$fails"; [ "$fails" -eq 0 ]

@@ -8,7 +8,7 @@ ok() { [ "$1" = 0 ] || { echo "FAIL: $2"; fails=$((fails+1)); }; }
 run() { HOME=$H bash "$repo/install.sh" --no-reload "$@" >"$H/out.txt" 2>&1; }
 
 run; ok $? "first install"
-for f in agents/worker.md skills/orchestrate/SKILL.md hooks/agent-bash-guard.sh orchestrate/write_proposals.py; do
+for f in agents/worker.md skills/orchestrate/SKILL.md skills/orchestrate/build-config-copies.md hooks/agent-bash-guard.sh orchestrate/write_proposals.py; do
   [ -e "$H/.claude/$f" ] ; ok $? "installed $f"; done
 [ -x "$H/.claude/hooks/agent-bash-guard.sh" ]; ok $? "hook is executable"
 [ -e "$H/.config/systemd/user/orchestrate.slice" ]; ok $? "slice installed"

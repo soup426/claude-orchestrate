@@ -22,8 +22,8 @@ if [ "$quiet" = 0 ]; then
     n=$(basename "$f"); i=$claude/agents/$n
     if [ ! -f "$i" ]; then echo "agent missing: $n"; elif ! cmp -s <(norm "$i") <(norm "$f"); then echo "agent differs: $n"; fi
   done
-  for f in "$here"/skills/*/SKILL.md; do
-    n=$(basename "$(dirname "$f")"); i=$claude/skills/$n/SKILL.md
+  for f in "$here"/skills/*/*.md; do
+    n=$(basename "$(dirname "$f")")/$(basename "$f"); i=$claude/skills/$n
     if [ ! -f "$i" ]; then echo "skill missing: $n"; elif ! cmp -s <(norm "$i") <(norm "$f"); then echo "skill differs: $n"; fi
   done
 fi
