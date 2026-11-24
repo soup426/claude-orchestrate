@@ -4,7 +4,7 @@ Any task that ends up writing code, in this order (the superpowers skills apply 
 3. Step list once; one go covers it (an approved superpowers plan is that go).
 4. Build with a failing test first: `orchestrate` for 2+ independent changes; one module you build yourself.
 5. `reviewer` agent before you call it done and before any file goes to a host (not for trivial edits), plus the `security` agent if it touches secrets, auth, network or untrusted input.
-6. `verifier` agent if the result is user-visible, then superpowers:verification-before-completion.
+6. `verifier` agent if the result is user-visible on this machine (it cannot use SSH); for a result that lives on a host, the `inspector` or your own read-only checks instead. Then superpowers:verification-before-completion.
 
 When the user asks me to choose between options, or says they do not know what is best, for a real choice they will act on (not code reviews, factual lookups or debugging), invoke the `decide` skill.
 

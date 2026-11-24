@@ -78,7 +78,7 @@ Agents have no turn limit and a stuck one never sends a notification, so keep on
 For each worker that reports DONE:
 - Re-run its Check yourself (capped; it is narrow and counts toward the memory budget): a worker's PASS is a claim, your run is the evidence. If `G/tests.sha256` exists, run `sha256sum -c G/tests.sha256`; a FAILED line means it edited a read-only test: restore from `G/tests/` and treat it as a FAIL.
 - Always send a reviewer. Brief: Repo, BASE, the acceptance criteria, the task's source and test files, the read-only test files, and any `G/pre-*` files for those files. When the tasks share one written contract and their total diff is under about 1000 lines, one combined reviewer over all of them (after every worker is DONE) replaces the per-task reviewers: the risks sit at the seams between modules. Any single file over about 800 lines still gets its own reviewer.
-- Send a tester only when it runs something the worker did not (a wider or independent check, a hidden edge-case test), and not for a task whose Check needs a scratch copy (the tester cannot make one).
+- A tester is the exception, not a step: most runs need none, because the workers' Checks and your capped re-runs cover the tests. Send one only when it runs something the worker did not (a wider or independent check, a hidden edge-case test), and not for a task whose Check needs a scratch copy (the tester cannot make one).
 - Security-sensitive task (tokens, secrets or auth, network code, untrusted input, deleting or migrating data, an LLM reading untrusted text, anything that will be published or posted): also send the `security` agent with Repo, BASE, the task's files, and whether the output leaves the machine. Not for ordinary tasks; it adds a review.
 
 Outcomes:
