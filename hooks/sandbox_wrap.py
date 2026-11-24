@@ -9,7 +9,7 @@ The main session, the worker and unknown agent types pass through untouched (exi
 The allow skips the permission classifier for these calls, so every error after the role is known is a deny.
 Design and probes: docs/sandbox-design.md. Tests: tests/test_sandbox.sh (they run the rewritten commands for real).
 """
-import json, os, re, shlex, shutil, subprocess, sys, tempfile
+import json, os, re, shlex, shutil, stat, subprocess, sys, tempfile
 
 NET = {"reviewer": False, "security": False, "researcher": True, "inspector": True, "verifier": True}
 CAP = "systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- "
@@ -93,10 +93,13 @@ def main():
             raise ValueError("unexpected session id or transcript path")
         base = f"/tmp/claude-{os.getuid()}"
         scratch = f"{base}/{proj}/{sid}"   # from the hook input, never from the command text
+        os.makedirs(base, mode=0o700, exist_ok=True)
+        st = os.lstat(base)   # before anything is created below it: whoever owns the parent could swap the leaf
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o022:
+            raise ValueError(f"{base} is not a private directory of ours")   # someone else pre-created it in /tmp
         os.makedirs(scratch, exist_ok=True)
-        if (os.path.realpath(scratch) != scratch or os.stat(scratch).st_uid != os.getuid()
-                or os.lstat(base).st_uid != os.getuid()):   # whoever owns the parent could swap the leaf later
-            raise ValueError("scratch directory is a symlink or not ours")   # someone else pre-created it in /tmp
+        if os.path.realpath(scratch) != scratch or os.stat(scratch).st_uid != os.getuid():
+            raise ValueError("scratch directory is a symlink or not ours")
         ssh_ok = False
         if role == "inspector":
             ssh_ok, why = read_only_probe(cmd)
@@ -111,7 +114,7 @@ def main():
         run_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
         if os.path.isdir(run_dir):
             b += ["--tmpfs", run_dir]                      # user bus, systemd --user, keyring, podman socket
-        b += ["--clearenv", "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--bind", scratch, scratch]
+        b += ["--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--bind", scratch, scratch]
         # A read-only bind does not stop connect(), and --unshare-net does not cover path sockets: every daemon
         # socket (docker, system bus, pcscd, app control sockets under $HOME) gets /dev/null bound over it.
         home, socks = os.path.expanduser("~"), socket_dir()
@@ -136,11 +139,13 @@ def main():
         elif socks and not in_ssh:
             b += ["--tmpfs", socks]
         cap = "" if os.environ.get("ORCHESTRATE_SANDBOX_NO_CAP") else CAP
-        # The environment is an allowlist: tokens in the Claude Code process env never reach an agent that has the
-        # network. Values are expanded by the shell that runs the command ("$PATH"), so its PATH is the one kept.
-        keep = [v for v in ENV + (ENV_NET if NET[role] else ()) if v in os.environ]
-        env = "".join(f' --setenv {v} "${v}"' for v in keep)
-        new = cap + " ".join(shlex.quote(x) for x in b) + env + " -- bash -c " + shlex.quote(cmd)
+        # The environment is an allowlist, applied with `env -i` before bwrap starts: bwrap --clearenv would leave
+        # the full environment readable in /proc/1/environ, because bwrap itself is the sandbox's first process.
+        # ${V+V="$V"} is expanded by the shell that runs the command: its value, one word, nothing when unset.
+        # A proxy URL that carries credentials (user:pass@) is dropped.
+        keep = list(ENV) + [v for v in (ENV_NET if NET[role] else ()) if "@" not in os.environ.get(v, "")]
+        env = "env -i " + " ".join('${%s+%s="$%s"}' % (v, v, v) for v in keep) + " "
+        new = env + cap + " ".join(shlex.quote(x) for x in b) + " -- bash -c " + shlex.quote(cmd)
         out("allow", f"sandboxed ({role})", {**ti, "command": new})
     except SystemExit:
         raise

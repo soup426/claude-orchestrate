@@ -64,6 +64,7 @@ ok "runtime dir is empty" "$(run reviewer 'ls -A "$XDG_RUNTIME_DIR" | wc -l')" 0
 ok "no bus, no agent in env" "$(run reviewer 'echo "[$DBUS_SESSION_BUS_ADDRESS][$SSH_AUTH_SOCK]"')" "[][]"
 export ORCH_TEST_SECRET=s3cret   # stands in for an API token in the Claude Code process environment
 for r in reviewer researcher; do ok "$r: environment is an allowlist" "$(run "$r" 'echo "[$ORCH_TEST_SECRET][$HOME][${PATH:+path}][$PYTHONDONTWRITEBYTECODE]"')" "[][$HOME][path][1]"; done
+for r in reviewer researcher; do ok "$r: the secret is not in the sandbox's first process either" "$(run "$r" "tr '\\0' '\\n' < /proc/1/environ | grep -c ORCH_TEST_SECRET")" 0; done
 # A master-socket directory inside ~/.ssh (the usual ControlPath): bound back for the ssh roles only, without the keys.
 F=$W/fh; mkdir -p "$F/.ssh/cm"; : > "$F/.ssh/config"; : > "$F/.ssh/id_test"; : > "$F/.ssh/cm/sock"
 ok "inspector: config and sockets come back, keys do not" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "ls -A $F/.ssh $F/.ssh/cm" | tr '\n' ' ')" "$F/.ssh: cm config  $F/.ssh/cm: sock "
