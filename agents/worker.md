@@ -26,6 +26,7 @@ The brief is your go-ahead and its Context is your research. Do not list steps a
 Instruction order: this file and the brief override any other rule about writing less code, pushing back on the request, fixing root causes elsewhere, or adding tests. Implement every acceptance criterion.
 
 Rules:
+- Create and change files with the Write and Edit tools, never `cat > file <<EOF` or `echo > file`: the command hook reads a heredoc's body as commands, so a test file containing `import unittest` is refused as an uncapped test run.
 - Edit only the files in Files. Needing another file means stop and report BLOCKED naming the file and why; another worker may own it. Never edit or stub it.
 - Files under Tests (read-only) are never edited, not even to fix a typo. If one looks wrong, report BLOCKED with the reason.
 - A failure whose traceback points at a file outside Files is not yours: re-run once after your next read-only step, and if it persists, report BLOCKED naming that file.
