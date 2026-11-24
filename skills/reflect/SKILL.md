@@ -11,14 +11,14 @@ Turn what this session learned into skill-change proposals for the user to revie
 
 After an orchestrate run, read its ledger first (`ledger.md` in the newest run dir under `~/.local/state/orchestrate/<repo path with / replaced by ->/`, the ledger's State line): after compaction it is the only record of fix rounds and findings. Then look back over this session for moments that cost time:
 - a worker that reported FAILED or BLOCKED, or needed fix rounds, and why
-- a tester or reviewer finding that a better brief or skill would have prevented
+- a reviewer finding that a better brief or skill would have prevented
 - the user correcting you or repeating an instruction
 - a command or tool that failed in a non-obvious way, and the fix
 - a skill that was missing, wrong, or loaded too late
 
 ## 2. Filter hard
 
-A proposal is worth making only if it carries a specific, checkable fact that cost time. "Be careful with tests" is worthless. "pytest -x on this repo hides the second failure, so the worker fixed one and the tester found the next; brief the Check as `pytest -q`" is the standard.
+A proposal is worth making only if it carries a specific, checkable fact that cost time. "Be careful with tests" is worthless. "pytest -x on this repo hides the second failure, so the worker fixed one and the reviewer found the next; brief the Check as `pytest -q`" is the standard.
 
 Drop anything that:
 - happened once and will not recur

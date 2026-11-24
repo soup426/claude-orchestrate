@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash) for the orchestrate agents, wired in each agent's frontmatter with its role as $1.
 # Enforces what the agent files say in prose: shared-tree git bans, no remote/install/privilege, no recursive rm;
-# tester and reviewer are read-only. Git/remote checks scan the raw text (catches bash -c '...'); the write checks
+# reviewer, researcher and security are read-only. Git/remote checks scan the raw text (catches bash -c '...'); the write checks
 # for read-only roles scan the text with quoted strings removed, so `python3 -c "assert a > b"` is not a redirect.
 role=${1:-worker}
 cmd=$(jq -r '.tool_input.command // empty')
 case $role in
   worker) out="report BLOCKED" ;; inspector) out="list it under COULD NOT CHECK" ;; researcher) out="list it under UNVERIFIED" ;;
-  tester) out="mention it in NOTES" ;; *) out="list it under NOT JUDGED" ;;
+  *) out="list it under NOT JUDGED" ;;
 esac
 deny() {
   jq -n --arg r "agent-bash-guard ($role): $1. The agent file forbids this; do the task without it or $out. If you were only searching for this text, change the pattern (quote the pattern in single quotes, or e.g. grep -n 'git.stash' or 'ssh.')." \
@@ -15,6 +15,33 @@ deny() {
   exit 0
 }
 has() { printf '%s' "$1" | command grep -qE -e "$2"; }   # -e: a pattern may start with --
+# Read-only roles: a plain redirect (> or >>) or `mkdir -p` whose target is a bare path inside this machine's session
+# scratchpads (/tmp/claude-<uid>/<project>/<session>/scratchpad/...) is not a write to the user's files. The target must
+# be a plain token (letters, digits, . _ - /; no quotes, $, backticks, globs, ..) that still resolves inside the
+# scratchpad after following symlinks. For `cat > <scratch file> <<'X'` the quoted here-doc body is data and is not
+# scanned. Everything else is left for the write checks below.
+drop_scratch() { python3 -I -c '
+import os, re, sys
+s = sys.argv[1]
+TOK = r"/tmp/claude-[0-9]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/scratchpad(?:/[A-Za-z0-9_.-]+)*/?"
+def ok(x):
+    if not re.fullmatch(TOK, x) or ".." in x.split("/") or "." in x.split("/"):
+        return False
+    root = os.path.realpath("/".join(x.split("/")[:6]))
+    real = os.path.realpath(x)
+    return real == root or real.startswith(root + "/")
+lines = s.split("\n")
+head = lines[0]
+m = re.search(r"<<-?\s*([\x27\x22])([A-Za-z_][A-Za-z0-9_]*)\1\s*$", head)
+if m and len(lines) > 1:
+    end = next((i for i in range(1, len(lines)) if re.fullmatch(re.escape(m.group(2)) + r"\s*(;.*)?", lines[i].strip())), None)
+    hm = re.fullmatch(r"\s*cat\s+>\s*(\S+)\s+<<-?\s*([\x27\x22])" + re.escape(m.group(2)) + r"\2\s*", head)
+    if end is not None and hm and ok(hm.group(1)):   # only `cat > <scratch file> <<'X'` and nothing else on the line
+        lines = [head] + lines[end + 1:]
+s = "\n".join(lines)
+s = re.sub(r"(^|[\s;&|])[0-9]?>>?\s*([^\s;&|<>()]+)(?=$|[\s;&|])", lambda m: m.group(1) if ok(m.group(2)) else m.group(0), s)
+s = re.sub(r"(^|[;&|]\s*|\n)mkdir\s+-p((?:\s+[^\s;&|<>()]+)+)\s*(?=$|[;&|\n])", lambda m: m.group(1) if all(ok(a) for a in m.group(2).split()) else m.group(0), s)
+print(s)' "$1" 2>/dev/null || printf '%s' "$1"; }
 # Remove single-quoted spans (bash expands nothing inside them), but only from simple read-only commands, so a quoted
 # grep pattern or URL is not mistaken for a runner or a background &. Strips nothing unless the text outside the spans has no ', ", backtick,
 # backslash, $, newline, #, parentheses, braces or << (then left-to-right pairing is exactly how bash pairs them), and every command
@@ -30,14 +57,19 @@ words = [seg.split()[0] if seg.split() else "" for seg in re.split(r"[;&|]+", ou
 print(out if all(w in READ for w in words if w) else s)' "$1" 2>/dev/null || printf '%s' "$1"; }
 B='(^|[^[:alnum:]_./-])'   # start of a command word
 E='([^[:alnum:]_-]|$)'
-C="(^|[;&|(\`]|then|do|(ba|z|da)?sh([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alnum:]]*c[[:space:]]+[\'\"])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|nice|time|nohup|exec|command|setsid|xargs|timeout[[:space:]]+[0-9.]+[a-z]?|uvx|uv[[:space:]]+run)[[:space:]]+)*([^[:space:]\'\"]*/)?(python[0-9.]*([[:space:]]+-[A-Za-z]+)*[[:space:]]+(-m[[:space:]]+)?)?(npx[[:space:]]+)?([^[:space:]\'\"]*/)?"   # command position (also inside bash -c '...' or "..."), so `pip show esptool` or grep 'pytest' is not a use
+C="(^|[;&|(\`]|then|do|(ba|z|da)?sh([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alnum:]]*c[[:space:]]+[\'\"])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|nice|time|nohup|exec|command|setsid|unshare([[:space:]]+-[[:alnum:]-]+)*|xargs|timeout[[:space:]]+[0-9.]+[a-z]?|uvx|uv[[:space:]]+run)[[:space:]]+)*([^[:space:]\'\"]*/)?(python[0-9.]*([[:space:]]+-[A-Za-z]+)*[[:space:]]+(-m[[:space:]]+)?)?(npx[[:space:]]+)?([^[:space:]\'\"]*/)?"   # command position (also inside bash -c '...' or "..."), so `pip show esptool` or grep 'pytest' is not a use
 
 has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(stash|checkout|switch|reset|restore|clean|add|commit|merge|rebase|push|pull|cherry-pick|revert|am|apply|rm|mv)${E}" \
   && deny "git command that changes the shared working tree, index, stash or remote"
 has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+branch[[:space:]]+(-[[:alnum:]]*[dDmM]|--delete|--move)" \
   && deny "git branch delete/rename"
-if [ "$role" = inspector ]; then rp='(scp|rsync|sudo|pkexec|yay)'; else rp='(ssh|scp|rsync|sudo|pkexec|yay)'; fi
-has "$cmd" "${C}${rp}[[:space:]]" && deny "remote, privileged or system-package command"
+# The verifier may ssh only when the WHOLE command is a read-only probe that the inspector's allow-list accepts.
+if [ "$role" = verifier ] && has "$cmd" "(^|[^[:alnum:]_.-])ssh${E}"; then   # the word anywhere, path forms too: { ssh, if ssh, /usr/bin/ssh, ./ssh, x=/usr/bin/ssh
+  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" --require-check "$cmd" 2>&1) || deny "ssh from the verifier must be a read-only probe (the whole command is checked like the inspector's): $why"
+fi
+if [ "$role" = inspector ] || [ "$role" = verifier ]; then rp='(scp|rsync|sudo|pkexec|yay)'; else rp='(ssh|scp|rsync|sudo|pkexec|yay)'; fi
+[[ $cmd =~ ^[\ $'\t']*ssh[\ $'\t']+-[VQ]([\ $'\t']+[A-Za-z0-9._-]+)?[\ $'\t']*$ ]] || \
+  { has "$cmd" "${C}${rp}[[:space:]]" && deny "remote, privileged or system-package command"; }   # a whole-command `ssh -V` or `ssh -Q x` only prints
 # pacman: only queries (-Q...); count every use against the -Q ones so `pacman -Q x; pacman -S y` is still caught
 pm=$(printf '%s' "$cmd" | command grep -oE -e "${C}pacman[[:space:]]" | wc -l); pq=$(printf '%s' "$cmd" | command grep -oE -e "${C}pacman[[:space:]]+-Q[a-zA-Z]*([[:space:]]|\$)" | wc -l)
 [ "$pm" -gt "$pq" ] && deny "pacman other than a -Q query"
@@ -85,13 +117,13 @@ fi
 # The inspector may ssh, but only to read: an allow-list parser checks every command word, local and remote
 # (inside ssh '...', pct exec --, sh -c, $(...)), and anything unknown is denied.
 if [ "$role" = inspector ]; then
-  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" "$cmd" 2>&1) || deny "not a read-only probe: $why"
+  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" --require-check "$cmd" 2>&1) || deny "not a read-only probe: $why"
 fi
 
 if [ "$role" != worker ]; then
   # The capped form puts the real command inside bash -c '...': scan those payloads as commands, not as quoted text.
   inner=$(printf '%s' "$cmd" | command grep -oE "(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+('[^']*'|\"[^\"]*\")" | sed -E "s/^(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+['\"]//; s/['\"]\$//")
-  bare=$(printf '%s ; %s' "$cmd" "$inner" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s#[0-9]?>>?[[:space:]]*/dev/null##g; s/[0-9]?>&[0-9]//g")
+  bare=$(drop_scratch "$(printf '%s ; %s' "$cmd" "$inner")" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s#[0-9]?>>?[[:space:]]*/dev/null##g; s/[0-9]?>&[0-9]//g")
   has "$bare" "${B}sed[[:space:]]+(-[[:alnum:]]*i|--in-place)" && deny "in-place edit (read-only role)"
   has "$bare" "${B}(rm|mv|cp|tee|truncate|touch|mkdir|ln|wget|patch|chmod|chown|dd)[[:space:]]" && deny "file-writing command (read-only role)"
   bare=$(printf '%s' "$bare" | sed -E 's#(^|[[:space:]])(-o|--output)[[:space:]=]+/dev/null##g')   # discarding output is not a write

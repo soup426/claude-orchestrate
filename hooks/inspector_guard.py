@@ -30,6 +30,10 @@ OK_ENV = {"LC_ALL", "LANG", "LANGUAGE", "TZ", "COLUMNS", "LINES", "TERM", "NO_CO
 SSH_OK_OPTS = {"BatchMode=yes", "ControlMaster=no", "StrictHostKeyChecking=yes", "LogLevel=ERROR", "LogLevel=QUIET"}
 
 
+REQUIRE_CHECK = False   # --require-check: every non-check ssh must directly follow `ssh -O check <same host> &&`
+CTX = {"prev": None, "sep": None}
+
+
 class Deny(Exception):
     pass
 
@@ -418,6 +422,11 @@ def check_ssh(args, depth):
         need(not remote, "ssh -O check takes only a host")
         return
     need(remote, "interactive ssh (give a remote command)")
+    if REQUIRE_CHECK:
+        need(depth == 0, "ssh inside another command (a check on a remote host proves nothing about a warm connection here)")
+        prev, sep = CTX["prev"], CTX["sep"]
+        need(sep == "&&" and prev == ["ssh", "-O", "check", args[i]],
+             f"ssh to {args[i]} must directly follow `ssh -O check {args[i]} &&` (warm connections only; a new one can need a hardware-key touch)")
     return check(" ".join(remote), depth + 1)
 
 
@@ -425,6 +434,9 @@ def check(text, depth=0):
     need(depth <= 6, "nested too deep")
     text = re.sub(r"[\r\n]+", " ; ", text)  # bash runs each line as its own command
     subset(text)
+    # An fd number belongs to the redirect only when it touches it (`2>&1`, `2>/dev/null`); `cat 2 >/dev/null f`
+    # passes 2 as an argument. Drop touching fd numbers before lexing, so a spaced digit stays a word.
+    text = re.sub(r"(?:(?<=^)|(?<=[\s;&|]))[0-9]+(?=[<>])", "", text)
     lex = shlex.shlex(text, posix=True, punctuation_chars=";&|<>()")
     lex.whitespace_split = True
     lex.commenters = ""
@@ -433,12 +445,13 @@ def check(text, depth=0):
     except ValueError as e:
         raise Deny(f"cannot parse command: {e}")
     need(not any(re.search(r"/dev/(tcp|udp)/", x) for x in toks), "/dev/tcp or /dev/udp network redirect")
-    segs, seg, i = [], [], 0
+    segs, seps, seg, i = [], [None], [], 0
     while i < len(toks):
         t = toks[i]
         nxt = toks[i + 1] if i + 1 < len(toks) else ""
         if t in (";", "&&", "||", "|", ";;", "|&"):
             segs.append(seg)
+            seps.append(t)
             seg = []
         elif t in ("(", ")"):
             raise Deny("subshells and case patterns are not in the supported shell subset")
@@ -459,7 +472,10 @@ def check(text, depth=0):
             seg.append(t)
         i += 1
     segs.append(seg)
-    for s in segs:
+    need(not (REQUIRE_CHECK and "||" in seps and any(s and os.path.basename(s[0]) == "ssh" for s in segs)),
+         "|| in a command that runs ssh (it can skip the ssh -O check)")
+    for k, s in enumerate(segs):
+        CTX["prev"], CTX["sep"] = (segs[k - 1] if k else None), seps[k]
         check_segment(s, depth)
 
 
@@ -474,6 +490,7 @@ def check_segment(s, depth):
         s = s[1:]
         while s and s[0].startswith("-"):
             s = s[2:] if s[0] in ("-s", "-k", "--signal", "--kill-after") else s[1:]
+        need(s and re.fullmatch(r"[0-9.]+[smhd]?", s[0]), "timeout without a duration")
         s = s[1:]
     while s and re.fullmatch(r"[0-9]+", s[0]):
         s = s[1:]
@@ -490,8 +507,11 @@ def check_segment(s, depth):
 
 
 if __name__ == "__main__":
+    argv = sys.argv[1:]
+    if argv[:1] == ["--require-check"]:
+        REQUIRE_CHECK, argv = True, argv[1:]
     try:
-        check(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read())
+        check(argv[0] if argv else sys.stdin.read())
     except Deny as e:
         print(e)
         sys.exit(1)

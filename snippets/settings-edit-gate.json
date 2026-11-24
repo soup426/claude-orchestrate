@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$HOME\"/.claude/hooks/orchestrate-edit-gate.sh"
+            "command": "\"$HOME\"/.claude/hooks/orchestrate-edit-gate.sh",
+            "timeout": 10
           }
         ]
       },
@@ -15,7 +16,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$HOME\"/.claude/hooks/main-bash-cap-gate.sh"
+            "command": "\"$HOME\"/.claude/hooks/main-bash-cap-gate.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME\"/.claude/hooks/review-stop-gate.sh",
+            "timeout": 10
           }
         ]
       }

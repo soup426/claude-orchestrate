@@ -47,4 +47,22 @@ for x in 1 2; do t allow "unwritable state dir never refuses ($x)" "$(j s7 true 
 old=$HOME/.local/state/orchestrate/bash-cap-gate-oldsession.refused; : > "$old"; touch -d '3 days ago' "$old"
 t deny  "pruning run" "$(j s8 true 'python3 sweep.py')"
 n=$((n+1)); [ -e "$old" ] && { echo "WRONG: stale state file not pruned"; fails=$((fails+1)); }
+# estate-warm and ssh are light; a host script from outside ~/Projects (temp file, pipe) makes the hook ask, every time
+for c in "estate-warm atlas pve" "ssh -O check host1 && ssh host1 'uptime'"; do t allow "light: $c" "$(j s10 true "$c")"; done
+t deny  "light commands did not use up the refusal" "$(j s10 true 'python3 sweep.py')"
+ask() { n=$((n+1)); out=$(printf '%s' "$2" | HOME=/work bash "$H" 2>/dev/null); [ "$(jq -r '.hookSpecificOutput.permissionDecision' <<<"$out" 2>/dev/null)" = "$1" ] || { echo "WRONG want=$1: $3"; fails=$((fails+1)); }; }
+ask ask "$(j s11 false "ssh pve 'pct exec 104 -- bash -s' < /tmp/x/golive.sh")" "temp-file host script asks"
+ask ask "$(j s11 false "printf id | ssh pve sh -s")" "piped host script asks"
+ask ask "$(j s11 false "ssh pve 'bash -s' < /tmp/y.sh")" "asks every time, not once"
+mkdir -p "$W/hp/Projects/r/deploy" && : > "$W/hp/Projects/r/deploy/setup.sh"
+n=$((n+1)); out=$(printf '%s' "$(j s11 false "ssh pve 'bash -s' < $W/hp/Projects/r/deploy/setup.sh")" | HOME=$W/hp bash "$H" 2>/dev/null); [ -z "$out" ] || { echo "WRONG: repo script under ~/Projects should pass"; fails=$((fails+1)); }
+ask ask "$(j s12 false "ssh pve bash < /tmp/x.sh")" "ssh bash without -s asks"
+ask ask "$(j s12 false "cat f | ssh pve")" "pipe into ssh asks"
+ask ask "$(j s12 false "ssh pve 'bash -s' < /work/Projects/../../../tmp/evil.sh")" ".. out of ~/Projects asks"
+ask ask "$(j s12 false "cat < /work/Projects/a; ssh pve 'bash -s' < /tmp/e")" "every < is checked"
+ask ask "$(j s12 false "ssh pve 'bash -s' <<< id")" "here-string asks"
+t deny  "estate-warm chained with a job is not light" "$(j s13 true 'estate-warm atlas; python3 sweep.py')"
+for x in "ssh pve bash -s 0</tmp/x.sh" "ssh pve bash -s < <(cat /tmp/x.sh)" "exec 3</tmp/x.sh; ssh pve bash -s <&3" "ssh pve <>/tmp/x.sh" "cat x | timeout 60 ssh pve bash" "cat x | env ssh pve" "cat x |& ssh pve" "cat x | { ssh pve bash; }"; do ask ask "$(j s14 false "$x")" "dodge asks: $x"; done
+t deny  "a command substitution makes estate-warm not light" "$(j s15 true 'estate-warm $(cargo build)')"
+ask ask "$(j s16 false "ssh -O check pve && cat /tmp/x | ssh pve bash -s")" "a pipe before the second ssh asks"
 echo "bash-cap-gate cases=$n fails=$fails"; [ "$fails" -eq 0 ]
