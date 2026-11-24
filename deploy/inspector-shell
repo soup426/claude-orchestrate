@@ -6,8 +6,9 @@
 cmd=${SSH_ORIGINAL_COMMAND-}
 [ -n "$cmd" ] || { echo "inspector: read-only commands only, no login shell" >&2; exit 1; }
 here=$(dirname "$(readlink -f "$0")")
-# On stdin, so the command text is never read as one of the guard's own options. Any failure refuses.
-why=$(printf '%s' "$cmd" | python3 -I "$here/inspector_guard.py" 2>&1) || { echo "inspector: refused: $why" >&2; exit 1; }
+# On stdin, so the command text is never read as one of the guard's own options, and decoded as UTF-8 whatever
+# locale the client sent, the same way the bash below reads it. Any failure refuses.
+why=$(printf '%s' "$cmd" | env -i PATH=/usr/bin:/bin LC_ALL=C.UTF-8 python3 -I -X utf8 "$here/inspector_guard.py" 2>&1) || { echo "inspector: refused: $why" >&2; exit 1; }
 # bash, because that is the shell the guard's parser models.
 exec env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME="${HOME-/}" USER="${USER-inspector}" \
   LANG=C.UTF-8 bash --noprofile --norc -c "$cmd"

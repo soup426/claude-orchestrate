@@ -34,7 +34,7 @@ set -eu
 $not_a_person
 g=\$(getent group adm systemd-journal | cut -d: -f1 | paste -sd, -)
 [ -n "\$u" ] || useradd --system --home-dir $home --shell /bin/bash inspector
-usermod -p '*' -G "\$g" inspector   # '*': no password can match, and sshd does not treat it as a locked account
+usermod -p '*' -G "\$g" -d $home -s /bin/bash inspector   # '*': no password can match, and sshd does not treat it as a locked account
 install -d -o root -g root -m 755 $lib $home $home/.ssh
 install -o root -g root -m 755 "\$1/inspector-shell" $lib/
 install -o root -g root -m 644 "\$1/inspector_guard.py" $lib/
@@ -53,4 +53,4 @@ EOF
   ;;
 *) echo "usage: $0 install <ssh host> <public key file> | remove <ssh host>" >&2; exit 1;;
 esac
-tar -C "$w" -cf - . | ssh "$host" "$remote_as_root"
+tar -C "$w" -cf - . | ssh -- "$host" "$remote_as_root"
