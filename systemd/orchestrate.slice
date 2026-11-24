@@ -1,0 +1,6 @@
+# Shared memory budget for all capped test/build runs from Claude sessions and orchestrate agents.
+# Per-run caps (-p MemoryMax=6G) still apply inside it; going over this total kills runs in the slice, never the terminal.
+# Sized for a 32 GB machine. To change it, edit MemoryMax/MemorySwapMax here, then see the README ("Changing the memory numbers").
+[Slice]
+MemoryMax=14G
+MemorySwapMax=2G

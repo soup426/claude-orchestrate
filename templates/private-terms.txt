@@ -1,0 +1,9 @@
+# Private terms the security agent treats as leaks in anything leaving the machine.
+# One fixed string per line, matched case-insensitively. Lines starting with # are ignored.
+# Installed to ~/.claude/security/private-terms.txt (mode 600). Never commit your filled-in copy.
+# Examples (replace with your own):
+# /home/yourname
+# yourname@
+# your-internal-domain.example
+# your-hostname
+# 10.0.0.
