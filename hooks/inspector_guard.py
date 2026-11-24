@@ -319,6 +319,11 @@ def check_args(cmd, args, depth):
     if cmd == "dpkg":
         need(args and re.fullmatch(r"-[lsLS]|--(list|status|listfiles|search|audit)", args[0]), "dpkg other than -l/-s/-L/-S")
         return
+    if cmd == "dpkg-query":
+        only_opts(args, {"-W", "--show", "-l", "--list", "-s", "--status", "-L", "--listfiles", "-S", "--search", "-p", "--print-avail"},
+                  {"-f", "--showformat"})
+        need(any(x in ("-W", "--show", "-l", "--list", "-s", "--status", "-L", "--listfiles", "-S", "--search", "-p", "--print-avail") for x in args), "dpkg-query without a query action")
+        return
     if cmd == "pacman":
         need(args and re.fullmatch(r"-Q[a-z]*", args[0]), "pacman other than -Q")
         return

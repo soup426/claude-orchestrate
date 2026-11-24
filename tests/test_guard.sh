@@ -118,5 +118,8 @@ t reviewer allow "grep -c '^pytest\$' f | head"
 # security: process substitution and function bodies stop quote stripping
 for c in "cat <(eval 'a; pytest')" "grep x <(eval 'a; pytest')" "cat <(bash -e -c 'a; make')" "echo a >(eval 'a; make')" "cat () ( eval 'a; make' ) && cat" "cat () { eval 'a; make'; } && cat"; do t worker deny "$c"; done
 for c in "cat <(eval 'python3 -m http.server --bind 127.0.0.1 &')" "cat <(bash -e -c 'sleep 600 &')"; do t verifier deny "$c"; done
+# inspector: dpkg-query read-only queries
+for c in "dpkg-query -W -f '\${Version}' openssh-server" "dpkg-query -l nginx" "ssh host1 'dpkg-query -W openssh-server'" "dpkg-query -s bash"; do t inspector allow "$c"; done
+for c in "dpkg-query --admindir=/tmp/x -W" "dpkg-query --load-avail f" "dpkg-query" "dpkg-query -f x"; do t inspector deny "$c"; done
 echo "cases=$n fails=$fails"
 [ "$fails" -eq 0 ]
