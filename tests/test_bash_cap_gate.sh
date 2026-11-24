@@ -39,6 +39,8 @@ t allow "no command" '{"session_id":"s6","tool_input":{"run_in_background":true}
 t allow "no session id" '{"tool_input":{"command":"python3 sweep.py","run_in_background":true}}'
 for c in 'sleep 1200' '  sleep 60' 'until test -e /x; do sleep 5; done'; do t allow "timer or wait loop: $c" "$(j s7 true "$c")"; done
 t deny  "sleep followed by a real job is not a timer" "$(j s7 true 'sleep 1; python3 sweep.py')"
+for c in 'u=backup.service; while [ "$(systemctl --user show $u -p ActiveState --value)" = activating ]; do sleep 30; done; echo done' 'while true; do sleep 10; done'; do t allow "wait loop: ${c:0:30}" "$(j s9 true "$c")"; done
+t deny  "wait loops did not use up the refusal" "$(j s9 true 'python3 sweep.py')"
 for x in 1 2; do t allow "hostile session id ($x)" "$(j '../x' true 'python3 sweep.py')"; done
 ro=$W/ro-home; mkdir -p "$ro/.local"; chmod 555 "$ro/.local"
 for x in 1 2; do t allow "unwritable state dir never refuses ($x)" "$(j s7 true 'python3 sweep.py')" "$ro"; done

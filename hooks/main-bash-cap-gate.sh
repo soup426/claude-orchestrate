@@ -3,7 +3,7 @@
 # refused once per session, so a long scan, batch job, build or test run gets the memory cap. A retry is allowed, so
 # the gate can never lock a session (same one-shot design as orchestrate-edit-gate.sh). It is a nudge, so every error
 # or missing input allows the command. Plain substring check, no shell parsing. Skipped: subagents (their own guard
-# hook covers them), foreground commands, and commands that start with `sleep ` or `until ` (timers, wait loops).
+# hook covers them), foreground commands, and a bare `sleep N` and `while`/`until ... do sleep` wait loops.
 in=$(cat)
 [ -n "$(jq -r '.agent_id // empty' <<<"$in" 2>/dev/null)" ] && exit 0
 [ "$(jq -r '.tool_input.run_in_background // false' <<<"$in" 2>/dev/null)" = true ] || exit 0
@@ -11,7 +11,8 @@ sid=$(jq -r '.session_id // empty' <<<"$in" 2>/dev/null); cmd=$(jq -r '.tool_inp
 [ -z "$sid" ] || [ -z "$cmd" ] && exit 0
 case $sid in *[!A-Za-z0-9_-]*) exit 0 ;; esac   # session ids are UUIDs; anything else never reaches a file name
 case $cmd in *systemd-run*) exit 0 ;; esac
-[[ $cmd =~ ^[[:space:]]*(sleep[[:space:]]+[0-9.]+[smhd]?[[:space:]]*|until[[:space:]].*)$ ]] && exit 0   # a bare timer (the orchestrate watchdog) or a wait loop is light
+[[ $cmd =~ ^[[:space:]]*sleep[[:space:]]+[0-9.]+[smhd]?[[:space:]]*$ ]] && exit 0   # a bare timer (the orchestrate watchdog) is light
+[[ $cmd =~ (^|[;&|[:space:]])(while|until)[[:space:]].*do[[:space:]]+sleep[[:space:]] ]] && exit 0   # so is a wait loop (`x=...; while [ ... ]; do sleep 30; done`)
 
 st=$HOME/.local/state/orchestrate
 mkdir -p "$st" 2>/dev/null || exit 0
