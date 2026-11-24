@@ -31,7 +31,7 @@ echo "$K" > "$W/good.pub"
 acct() { PATH=$B:$PATH bash "$R/deploy/inspector-account.sh" "$@" >/dev/null 2>&1; echo $?; }
 ok "a public key installs" "$(acct install testhost "$W/good.pub")" "0"
 mkdir "$W/x"; tar -C "$W/x" -xf "$W/sent.tar" 2>/dev/null
-ok "the bundle holds the wrapper, the guard, the key line and the remote script" "$(ls "$W/x" | tr '\n' ' ')" "authorized_keys inspector_guard.py inspector-shell remote.sh "
+ok "the bundle holds the wrapper, the guard, the key line and the remote script" "$(LC_ALL=C ls "$W/x" | tr '\n' ' ')" "authorized_keys inspector-shell inspector_guard.py remote.sh "
 ok "the key line forces the wrapper and restricts everything else" "$(cat "$W/x/authorized_keys")" "restrict,command=\"/usr/local/lib/orchestrate/inspector-shell\" $K"
 ok "the host is the ssh target" "$(grep -c "^-- testhost " "$W/args")" "1"
 ok "the remote script parses" "$(sh -n "$W/x/remote.sh" 2>&1; grep -c "install -o root -g root -m 644 .*authorized_keys" "$W/x/remote.sh")" "1"
