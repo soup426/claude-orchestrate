@@ -10,7 +10,7 @@ deny() {
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
-has() { printf '%s' "$1" | command grep -qE "$2"; }
+has() { printf '%s' "$1" | command grep -qE -e "$2"; }   # -e: a pattern may start with --
 B='(^|[^[:alnum:]_./-])'   # start of a command word
 E='([^[:alnum:]_-]|$)'
 C="(^|[;&|(\`]|then|do|(ba|z|da)?sh([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alnum:]]*c[[:space:]]+[\'\"])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|nice|time|nohup|exec|command|setsid|xargs|timeout[[:space:]]+[0-9.]+[a-z]?|uvx|uv[[:space:]]+run)[[:space:]]+)*([^[:space:]\'\"]*/)?(python[0-9.]*[[:space:]]+(-m[[:space:]]+)?)?(npx[[:space:]]+)?([^[:space:]\'\"]*/)?"   # command position (also inside bash -c '...' or "..."), so `pip show esptool` or grep 'pytest' is not a use
@@ -19,7 +19,8 @@ has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(stash|
   && deny "git command that changes the shared working tree, index, stash or remote"
 has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+branch[[:space:]]+(-[[:alnum:]]*[dDmM]|--delete|--move)" \
   && deny "git branch delete/rename"
-has "$cmd" "${C}(ssh|scp|rsync|sudo|pkexec|pacman|yay)[[:space:]]" && deny "remote, privileged or system-package command"
+if [ "$role" = inspector ]; then rp='(scp|rsync|sudo|pkexec|yay)'; else rp='(ssh|scp|rsync|sudo|pkexec|pacman|yay)'; fi
+has "$cmd" "${C}${rp}[[:space:]]" && deny "remote, privileged or system-package command"
 has "$cmd" "(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh${E}" && deny "piping a download into a shell"
 has "$cmd" "${B}(pip3?|uv[[:space:]]+pip)[[:space:]]+install${E}|${B}npm[[:space:]]+(install|i|ci|add)${E}|${B}(uv|cargo|poetry|yarn|pnpm)[[:space:]]+add${E}|${C}(cargo|pipx)[[:space:]]+install${E}|${C}(yarn|pnpm|poetry|bundle|composer)[[:space:]]+(install|i)${E}|${C}uv[[:space:]]+sync${E}|${C}go[[:space:]]+(get|install)${E}" \
   && deny "installing dependencies"
@@ -42,12 +43,29 @@ if has "$capcmd" "${C}(pytest|unittest|tsc|gradle|gradlew|mvn|make|ctest|ninja|j
   deny "test or build command outside the memory cap: run it as systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- bash -c 'cd <Repo> && <command>'"
 fi
 
+# The verifier may run servers, but never detached: no daemons, no background, no compose up -d.
+if [ "$role" = verifier ]; then
+  has "$cmd" "${C}(nohup|setsid|disown|daemonize)${E}|(^|[^&>])&([^&>]|$)|docker([[:space:]].*)?[[:space:]](up|run)[[:space:]].*-d${E}|--detach" && deny "detached or background process (the verifier's servers must end with their timeout)"
+  has "$cmd" "http\.server" && ! has "$cmd" "--bind[[:space:]=]+127\.0\.0\.1|-b[[:space:]]+127\.0\.0\.1" && deny "http.server without --bind 127.0.0.1"
+  runs=$(printf '%s' "$cmd" | command grep -oE -e 'systemd-run' | wc -l); scoped=$(printf '%s' "$cmd" | command grep -oE -e 'systemd-run[[:space:]]+--user[[:space:]]+--scope' | wc -l)
+  [ "$runs" -gt "$scoped" ] && deny "systemd-run without --user --scope starts a detached service"
+  has "$cmd" "${C}(tmux[[:space:]]+(new|new-session)[^;&|]*-d|at|batch)${E}|${C}screen[[:space:]]+-[a-zA-Z]*d" && deny "detached session or scheduled job"
+  has "$cmd" "--host[[:space:]=]+(0\.0\.0\.0|::)|--bind[[:space:]=]+(0\.0\.0\.0|::)|-H[[:space:]]+0\.0\.0\.0" && deny "server bound to all interfaces (use 127.0.0.1)"
+fi
+
+# The inspector may ssh, but only to read: an allow-list parser checks every command word, local and remote
+# (inside ssh '...', pct exec --, sh -c, $(...)), and anything unknown is denied.
+if [ "$role" = inspector ]; then
+  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" "$cmd" 2>&1) || deny "not a read-only probe: $why"
+fi
+
 if [ "$role" != worker ]; then
   # The capped form puts the real command inside bash -c '...': scan those payloads as commands, not as quoted text.
   inner=$(printf '%s' "$cmd" | command grep -oE "(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+('[^']*'|\"[^\"]*\")" | sed -E "s/^(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+['\"]//; s/['\"]\$//")
   bare=$(printf '%s ; %s' "$cmd" "$inner" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s#[0-9]?>>?[[:space:]]*/dev/null##g; s/[0-9]?>&[0-9]//g")
   has "$bare" "${B}sed[[:space:]]+(-[[:alnum:]]*i|--in-place)" && deny "in-place edit (read-only role)"
   has "$bare" "${B}(rm|mv|cp|tee|truncate|touch|mkdir|ln|wget|patch|chmod|chown|dd)[[:space:]]" && deny "file-writing command (read-only role)"
+  bare=$(printf '%s' "$bare" | sed -E 's#(^|[[:space:]])(-o|--output)[[:space:]=]+/dev/null##g')   # discarding output is not a write
   has "$bare" "${B}curl[^|;&]*[[:space:]](-[[:alnum:]]*[oO]|--output|--remote-name)|${B}git[[:space:]]+clone${E}|${B}gh[[:space:]]+repo[[:space:]]+clone${E}|${B}perl[[:space:]]+-[[:alnum:]]*i" && deny "download or in-place write (read-only role)"
   has "$bare" "(^|[^<>=-])>>?[[:space:]]*[^[:space:]&=]" && deny "output redirect into a file (read-only role)"
 fi

@@ -20,7 +20,7 @@ sysd=$HOME/.config/systemd/user
 pairs=()  # "source|destination"
 for f in "$here"/agents/*.md; do pairs+=("$f|$claude/agents/$(basename "$f")"); done
 for f in "$here"/skills/*/SKILL.md; do pairs+=("$f|$claude/skills/$(basename "$(dirname "$f")")/SKILL.md"); done
-for f in "$here"/hooks/*.sh; do pairs+=("$f|$claude/hooks/$(basename "$f")"); done
+for f in "$here"/hooks/*.sh "$here"/hooks/*.py; do pairs+=("$f|$claude/hooks/$(basename "$f")"); done
 pairs+=("$here/scripts/write_proposals.py|$claude/orchestrate/write_proposals.py")
 pairs+=("$here/systemd/orchestrate.slice|$sysd/orchestrate.slice")
 

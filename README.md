@@ -5,7 +5,7 @@ A multi-agent workflow for [Claude Code](https://code.claude.com): the main sess
 What you get:
 
 - **`orchestrate` skill**: the planner. It splits a job into independent tasks with written briefs (Goal, Files, Check, acceptance criteria), dispatches workers in parallel, re-runs each worker's check itself, sends a fresh reviewer per task, and sends failures back for fixes (two rounds, then it takes the task over).
-- **Five agents**: `researcher` (read-only, verifies external facts before the plan is split, every claim sourced), `worker` (one bounded change, limited to the files in its brief), `tester` (runs checks, never edits), `reviewer` (read-only, PASS or FAIL with `path:line` findings) and `security` (read-only: gitleaks, secrets in code and output, your private names from a local terms file, and secure-coding checks; runs on security-sensitive tasks and before anything is pushed public, published or posted).
+- **Seven agents**: `inspector` (read-only live probes of your own hosts and services over already-open SSH connections and read-only MCP tools; returns the command behind each fact), `verifier` (end-to-end: a page in headless Playwright, a CLI's real output, one capped live call), `researcher` (read-only, verifies external facts before the plan is split, every claim sourced), `worker` (one bounded change, limited to the files in its brief), `tester` (runs checks, never edits), `reviewer` (read-only, PASS or FAIL with `path:line` findings) and `security` (read-only: gitleaks, secrets in code and output, your private names from a local terms file, and secure-coding checks; runs on security-sensitive tasks and before anything is pushed public, published or posted).
 - **`decide` skill**: for "which of these should I pick?" questions. It commits to an instinct and criteria before looking anything up, checks memory and facts, steelmans and attacks each option, optionally asks an advisor model, and returns one decision with what would flip it.
 - **`reflect` skill**: run at the end of an orchestrate run. It turns what cost time into at most three proposed skill edits, written as markdown files in `~/.claude/skill-proposals/` for you to review. It never edits skills itself.
 - **Two hooks** that back up the prose rules (see Design), and a systemd slice that caps total memory for test and build runs.
@@ -56,6 +56,10 @@ The defaults suit a 32 GB machine: 14G for the whole slice, 6G for a heavy run, 
 - Per-run cap: change `-p MemoryMax=6G -p MemorySwapMax=1G` in `agents/{worker,tester,reviewer}.md`, `skills/orchestrate/SKILL.md`, `snippets/CLAUDE.md` and the hook's deny message in `hooks/agent-bash-guard.sh` (`grep -rn 'MemoryMax=6G'` finds them all; the guard only checks that `systemd-run --user --scope` is present, not the number).
 - Planner weights and total: "6G if heavy, 3G otherwise, keep the total at or under 14G" in `skills/orchestrate/SKILL.md` section 3, and the same sentence in `snippets/CLAUDE.md`. Keep the total at or below the slice's `MemoryMax`.
 
+### Giving the inspector your read-only MCP tools
+
+`agents/inspector.md` ships with only Read, Grep, Glob, Bash and ToolSearch. If you have MCP servers for your infrastructure (for example Proxmox, NetBox or Grafana), add their read-only tools to its `tools:` line by exact name, such as `mcp__proxmox__get_cluster_resources`. List tools one by one: naming a whole server would also give it that server's write tools. The `verifier` expects the Playwright MCP server (`mcp__playwright__*`) for web pages; without it, it can still check CLI output.
+
 ## Usage
 
 Ask Claude Code for a job that splits into independent changes, or type `/orchestrate`:
@@ -81,6 +85,10 @@ systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p 
 
 ## Limits and known false positives
 
+- **Threat model.** The hooks stop a well-meaning agent's mistakes and casual prompt injection from command output or web pages. They are not a sandbox. For a real boundary on your hosts, give the inspector a dedicated read-only account (for example an SSH forced command that runs only a fixed set of read commands) instead of your own key.
+- The `inspector` may use `ssh`, so its commands are checked by an allow-list parser (`hooks/inspector_guard.py`), not a deny-list. It first refuses any shell syntax where bash and the parser could disagree or where one word could expand into options (`$'..'`, `${..}`, `$(..)`, `$var`, backticks, brace expansion, unquoted globs, loops, unquoted `#` or backslash, a backslash inside double quotes other than `\"` or `\\`, subshells, here-docs, `&`, `/dev/tcp`), so the inspector writes every command literally; then: every command word, including inside `ssh host '...'`, `pct exec <id> -- ...` and `sh -c "..."`, must be a known read-only command with read-only arguments, and anything unknown is refused. If it refuses a read you need, add the command (with its read-only arguments) to the list in that file.
+- Residual risks, by design: the `inspector` keeps the Read tool, so it can read local secret files (its file says never to print secret values, but that is prose); the `verifier` drives a browser, and staying on the brief's localhost URL is prose too, so a hostile page could try prompt injection against an agent that has Bash (its guard blocks daemons, background jobs and all-interface binds, not every command). Command output and page content are treated as data in both agent files. Network egress is not limited: the inspector can still send what it reads to another host (`curl`, `dig`), and some allowed reads can hang (`tail -f`, `docker logs -f`).
+
 - The guard is regex matching on the command text, a backstop and not a sandbox. A determined agent can get around it (`eval`, a command assembled in a variable, code run inside an interpreter). It guards the `Bash` tool only; the read-only roles are kept from `Edit` and `Write` by their `tools:` list. Without `jq` the hooks fail open.
 - It errs toward denying. Known false positive: text that looks like a forbidden command inside an unquoted search pattern, for example `grep -rn git stash src/`. Quote the pattern (`grep -rn 'git stash' src/`) or write it as `'git.stash'`; the denial message says so. Words such as `make` or `pytest` inside quotes are fine; at a command position they are treated as runs and must be capped.
 - The shared tree means a crashing build in one task can fail another task's check. The planner serializes tasks that compile a whole project, but it cannot see every coupling.
@@ -89,7 +97,7 @@ systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p 
 
 ## Uninstall
 
-Remove what `install.sh` listed: `~/.claude/agents/{researcher,worker,tester,reviewer,security}.md`, `~/.claude/security/private-terms.txt`, `~/.claude/skills/{orchestrate,decide,reflect}/`, `~/.claude/hooks/agent-{bash-guard,report-gate}.sh`, `~/.claude/orchestrate/`, `~/.config/systemd/user/orchestrate.slice` (then `systemctl --user daemon-reload`), plus the snippets you added to `CLAUDE.md` and `settings.json`. Run state in `~/.local/state/orchestrate/` and proposals in `~/.claude/skill-proposals/` are yours to keep or delete.
+Remove what `install.sh` listed: `~/.claude/agents/{researcher,inspector,worker,tester,reviewer,security,verifier}.md`, `~/.claude/security/private-terms.txt`, `~/.claude/skills/{orchestrate,decide,reflect}/`, `~/.claude/hooks/agent-{bash-guard,report-gate}.sh`, `~/.claude/hooks/inspector_guard.py`, `~/.claude/orchestrate/`, `~/.config/systemd/user/orchestrate.slice` (then `systemctl --user daemon-reload`), plus the snippets you added to `CLAUDE.md` and `settings.json`. Run state in `~/.local/state/orchestrate/` and proposals in `~/.claude/skill-proposals/` are yours to keep or delete.
 
 ## License
 
