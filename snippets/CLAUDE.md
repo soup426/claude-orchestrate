@@ -11,7 +11,7 @@ Subagents: the main session runs Opus at high effort; every subagent runs on Son
 - Research that means reading external docs or the web (library/API behaviour, versions, protocols, known failure modes): the `researcher` agent, so the pages stay out of the main context; its sourced report counts as the research step.
 - Any other subagent (builder checks, skill test runs, Explore, Plan, general-purpose, web-fetch) also runs on Sonnet: settings.json forces it, so do not pass `model`.
 
-Code you wrote yourself outside orchestrate (a new module, a script, a non-trivial fix) gets one `reviewer` agent, given Repo and the commit range or a pre-change snapshot, before you call it done, including code you already committed earlier in the session; trivial edits (typos, docs, config values that are not security-relevant) need none.
+Code you wrote yourself outside orchestrate (a new module, a script, a non-trivial fix) gets one `reviewer` agent, given Repo and the commit range or a pre-change snapshot, before you call it done and always before it goes live on a host (rules, configs, deploy scripts), including code you already committed earlier in the session; trivial edits (typos, docs, config values that are not security-relevant) need none.
 
 Change files with the Edit and Write tools, not `python3 - <<EOF` rewrite scripts or multi-line `sed`, so the optional edit gate and the user's diff view see every change; a single `sed -i` substitution is fine.
 

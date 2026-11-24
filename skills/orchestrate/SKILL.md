@@ -43,7 +43,7 @@ Scratch copies: <paths, or none>
 
 ## 2. Split
 
-Write each delegated brief to `G/<task>-brief.md` with the Write tool (an unquoted heredoc runs the brief's backticks as commands); the Agent prompt is either the same text or, for long briefs, `Your brief is at <path>: read it first.` When tasks share interfaces (function names, data shapes, file formats), write them once in `G/contract.md` and point every brief's Context at it; that is also what a combined reviewer checks the seams against. Subagents start outside the repo, so paths are absolute:
+Write each delegated brief to `G/<task>-brief.md` with the Write tool (an unquoted heredoc runs the brief's backticks as commands); the Agent prompt is either the same text or, for long briefs, `Your brief is at <path>: read it first.` When tasks share interfaces (function names, data shapes, file formats), write them once in `G/contract.md` and point every brief's Context at it; that is also what a combined reviewer checks the seams against. A task that writes test data or samples standing in for a real system (log lines, API responses, event names): first query the values that system actually produces (an indexer aggregation, a database read, a log sample, via the inspector for fixed questions) and put them in the brief's Context; the brief says that any line using an unobserved value is marked `# synthetic (unobserved value)` and that any finding resting on one must say so. Scrub or replace real hostnames, addresses, usernames and secrets in observed values before they go into fixtures. Subagents start outside the repo, so paths are absolute:
 
 ```
 Repo: <R>
@@ -109,6 +109,6 @@ Outcomes:
 
 Before the report, run `ss -ltnp` and stop any server a verifier left listening on a port its brief named (find it by that port, confirm with `/proc/<pid>/cmdline`, kill that pid, never `pkill -f`), then TaskStop that verifier if it still shows as running.
 
-Report: what changed (per task), what was verified and how, findings that were deferred, and anything you took over or could not verify. `rm -rf` every scratch copy listed in the ledger and `G/base` if you made one, then append a last line `COMPLETE <date>` to the ledger.
+Report: what changed (per task), what was verified and how, findings that were deferred, and anything you took over or could not verify. `rm -rf` every scratch copy listed in the ledger and `G/base` if you made one, then append a last line `COMPLETE <date>` to the ledger. Work that follows in the same session (further fixes, a deploy) goes into the same ledger as `POST-COMPLETE` rows with the same reviewer column, and ends with a new `COMPLETE <date>` line.
 
 Then always invoke the `reflect` skill, every run, including test runs. Zero proposals is a normal result. Writing to the user's proposal queue (`~/.claude/skill-proposals`) is the intended output, not a side effect to avoid: the user reviews that queue by hand.
