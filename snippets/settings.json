@@ -3,5 +3,19 @@
     "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
     "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"
   },
-  "advisorModel": "fable"
+  "advisorModel": "fable",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "i=$(cat); case $i in *'\"agent_id\"'*) printf '%s' \"$i\" | python3 -I \"$HOME/.claude/hooks/sandbox_wrap.py\" || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"sandbox_wrap failed to run, so this subagent command was not run\"}}';; esac",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
 }

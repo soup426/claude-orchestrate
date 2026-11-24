@@ -58,7 +58,8 @@ fi
 terms="$claude/security/private-terms.txt"
 if [ -L "$terms" ]; then echo "warning: $terms is a symlink; not touching it" >&2
 elif [ ! -e "$terms" ]; then mkdir -p "$(dirname "$terms")" && install -m 600 "$here/templates/private-terms.txt" "$terms" && echo "installed $terms (add your own private terms)"; fi
-command -v jq >/dev/null || echo "warning: jq is not installed; the hooks need it (they fail open without it)" >&2
+bwrap --ro-bind / / true 2>/dev/null || echo "warning: bubblewrap (bwrap) cannot create a sandbox here; with the sandbox hook from snippets/settings.json the read-only agents' Bash commands will fail until it can" >&2
+command -v jq >/dev/null ||echo "warning: jq is not installed; the hooks need it (they fail open without it)" >&2
 
 cat <<MSG
 

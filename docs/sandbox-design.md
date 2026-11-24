@@ -1,6 +1,7 @@
 # Design: run subagent Bash commands in a bubblewrap sandbox
 
-Status: proposal, not built. Written 2026-11-24 after an independent critique found that the Bash guard infers writes,
+Status: built for the five read-only roles (`hooks/sandbox_wrap.py`, `tests/test_sandbox.sh`); the worker is not
+sandboxed. See "What was built" at the end for where the build differs from this proposal. Written 2026-11-24 after an independent critique found that the Bash guard infers writes,
 runners and network use from command text: about 9 of 83 refusals in five real sessions were clearly right, and one
 verifier got past the guard with a rewritten import. Every new allowance has cost 2 to 4 security review rounds.
 
@@ -74,3 +75,22 @@ package installs, and the remote half of ssh (`inspector_guard.py`, since the sa
   bug report that used it, not a test).
 - What else under `$XDG_RUNTIME_DIR` a worker legitimately needs.
 - Whether to keep `--unshare-net` for the worker by default (it blocks `pip install` and `npm install`).
+
+## What was built (2026-11-24)
+
+- The hook lives in `settings.json`, not in agent frontmatter, and picks the role from `agent_type` in the hook
+  input. `updatedInput` from a settings-level PreToolUse hook works in subagents on Claude Code 2.1.330 in auto mode
+  (first open question: answered for settings hooks, not tested for frontmatter hooks).
+- Roles: reviewer and security have no network; researcher, inspector and verifier share the host network (the
+  inspector's allow-list includes local `curl` and `nc -z`). The worker and unknown agent types pass through.
+- The inspector's whole command goes through `inspector_guard.py --require-check` before it is wrapped. A verifier
+  command sees the ssh master sockets only when it passes the same check.
+- The memory cap is part of the rewrite, so read-only agents no longer type it. Claude Code's
+  `CLAUDE_CODE_TOOL_MEMORY_LIMIT` was tried as a replacement for the typed cap and rejected: one cgroup is shared
+  by all sessions, and with no swap limit a 1.5G allocation under a 1G limit was swapped, not killed.
+- The settings entry is a shell shim that only starts Python when the input has an `agent_id`, and denies if the
+  script fails, so a broken hook can block subagent commands but never the main session.
+- One live smoke run (`scripts/smoke.sh`): three reviewers ran 6 sandboxed commands with 0 refusals; the same task
+  on the old guard gave 8 false refusals in one reviewer.
+- Not done: a worker sandbox (the other two open questions stay open), and a live ssh test of the inspector and
+  verifier paths against real hosts (covered only by `tests/test_sandbox.sh` with fake sockets).

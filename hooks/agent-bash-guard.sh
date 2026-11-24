@@ -1,47 +1,16 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash) for the orchestrate agents, wired in each agent's frontmatter with its role as $1.
-# Enforces what the agent files say in prose: shared-tree git bans, no remote/install/privilege, no recursive rm;
-# reviewer, researcher and security are read-only. Git/remote checks scan the raw text (catches bash -c '...'); the write checks
-# for read-only roles scan the text with quoted strings removed, so `python3 -c "assert a > b"` is not a redirect.
-role=${1:-worker}
+# PreToolUse hook (Bash) for the worker agent, wired in its frontmatter. The read-only agents do not use it: their
+# commands run in a sandbox (sandbox_wrap.py). A worker runs arbitrary code by design, so this is a seatbelt for the
+# few things workers share, not a boundary: the git tree and index, ssh and privilege, package installs, recursive rm,
+# the serial port, and the memory cap for test and build runners. It reads command text, so it can be wrong both ways.
+role=worker
 cmd=$(jq -r '.tool_input.command // empty')
-case $role in
-  worker) out="report BLOCKED" ;; inspector) out="list it under COULD NOT CHECK" ;; researcher) out="list it under UNVERIFIED" ;;
-  *) out="list it under NOT JUDGED" ;;
-esac
 deny() {
-  jq -n --arg r "agent-bash-guard ($role): $1. The agent file forbids this; do the task without it or $out. If you were only searching for this text, change the pattern (quote the pattern in single quotes, or e.g. grep -n 'git.stash' or 'ssh.')." \
+  jq -n --arg r "agent-bash-guard ($role): $1. The agent file forbids this; do the task without it or report BLOCKED. If you were only searching for this text, change the pattern (quote the pattern in single quotes, or e.g. grep -n 'git.stash' or 'ssh.')." \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
 has() { printf '%s' "$1" | command grep -qE -e "$2"; }   # -e: a pattern may start with --
-# Read-only roles: a plain redirect (> or >>) or `mkdir -p` whose target is a bare path inside this machine's session
-# scratchpads (/tmp/claude-<uid>/<project>/<session>/scratchpad/...) is not a write to the user's files. The target must
-# be a plain token (letters, digits, . _ - /; no quotes, $, backticks, globs, ..) that still resolves inside the
-# scratchpad after following symlinks. For `cat > <scratch file> <<'X'` the quoted here-doc body is data and is not
-# scanned. Everything else is left for the write checks below.
-drop_scratch() { python3 -I -c '
-import os, re, sys
-s = sys.argv[1]
-TOK = r"/tmp/claude-[0-9]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/scratchpad(?:/[A-Za-z0-9_.-]+)*/?"
-def ok(x):
-    if not re.fullmatch(TOK, x) or ".." in x.split("/") or "." in x.split("/"):
-        return False
-    root = os.path.realpath("/".join(x.split("/")[:6]))
-    real = os.path.realpath(x)
-    return real == root or real.startswith(root + "/")
-lines = s.split("\n")
-head = lines[0]
-m = re.search(r"<<-?\s*([\x27\x22])([A-Za-z_][A-Za-z0-9_]*)\1\s*$", head)
-if m and len(lines) > 1:
-    end = next((i for i in range(1, len(lines)) if re.fullmatch(re.escape(m.group(2)) + r"\s*(;.*)?", lines[i].strip())), None)
-    hm = re.fullmatch(r"\s*cat\s+>\s*(\S+)\s+<<-?\s*([\x27\x22])" + re.escape(m.group(2)) + r"\2\s*", head)
-    if end is not None and hm and ok(hm.group(1)):   # only `cat > <scratch file> <<'X'` and nothing else on the line
-        lines = [head] + lines[end + 1:]
-s = "\n".join(lines)
-s = re.sub(r"(^|[\s;&|])[0-9]?>>?\s*([^\s;&|<>()]+)(?=$|[\s;&|])", lambda m: m.group(1) if ok(m.group(2)) else m.group(0), s)
-s = re.sub(r"(^|[;&|]\s*|\n)mkdir\s+-p((?:\s+[^\s;&|<>()]+)+)\s*(?=$|[;&|\n])", lambda m: m.group(1) if all(ok(a) for a in m.group(2).split()) else m.group(0), s)
-print(s)' "$1" 2>/dev/null || printf '%s' "$1"; }
 # Remove single-quoted spans (bash expands nothing inside them), but only from simple read-only commands, so a quoted
 # grep pattern or URL is not mistaken for a runner or a background &. Strips nothing unless the text outside the spans has no ', ", backtick,
 # backslash, $, newline, #, parentheses, braces or << (then left-to-right pairing is exactly how bash pairs them), and every command
@@ -63,11 +32,7 @@ has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(stash|
   && deny "git command that changes the shared working tree, index, stash or remote"
 has "$cmd" "${B}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+branch[[:space:]]+(-[[:alnum:]]*[dDmM]|--delete|--move)" \
   && deny "git branch delete/rename"
-# The verifier may ssh only when the WHOLE command is a read-only probe that the inspector's allow-list accepts.
-if [ "$role" = verifier ] && has "$cmd" "(^|[^[:alnum:]_.-])ssh${E}"; then   # the word anywhere, path forms too: { ssh, if ssh, /usr/bin/ssh, ./ssh, x=/usr/bin/ssh
-  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" --require-check "$cmd" 2>&1) || deny "ssh from the verifier must be a read-only probe (the whole command is checked like the inspector's): $why"
-fi
-if [ "$role" = inspector ] || [ "$role" = verifier ]; then rp='(scp|rsync|sudo|pkexec|yay)'; else rp='(ssh|scp|rsync|sudo|pkexec|yay)'; fi
+rp='(ssh|scp|rsync|sudo|pkexec|yay)'
 [[ $cmd =~ ^[\ $'\t']*ssh[\ $'\t']+-[VQ]([\ $'\t']+[A-Za-z0-9._-]+)?[\ $'\t']*$ ]] || \
   { has "$cmd" "${C}${rp}[[:space:]]" && deny "remote, privileged or system-package command"; }   # a whole-command `ssh -V` or `ssh -Q x` only prints
 # pacman: only queries (-Q...); count every use against the -Q ones so `pacman -Q x; pacman -S y` is still caught
@@ -101,33 +66,4 @@ if has "$capcmd" "${C}(pytest|unittest|tsc|gradle|gradlew|mvn|make|ctest|ninja|j
   deny "test or build command outside the memory cap: run it as systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- bash -c 'cd <Repo> && <command>'"
 fi
 
-# The verifier may run servers, but never detached: no daemons, no background, no compose up -d.
-if [ "$role" = verifier ]; then
-  vq=$(strip_sq "$cmd")   # an & inside a single-quoted URL is not a background job...
-  has "$cmd" "(ba|z|da)?sh[[:space:]]+-[[:alnum:]]*c" && vq=$cmd                     # ...unless the quotes hold a shell payload
-  has "$vq" "(^|[^&>])&([^&>]|$)" && deny "background process with & (the verifier's servers must end with their timeout)"
-  has "$cmd" "${C}(nohup|setsid|disown|daemonize)${E}|docker([[:space:]].*)?[[:space:]](up|run)[[:space:]].*-d${E}|--detach" && deny "detached or background process (the verifier's servers must end with their timeout)"
-  has "$cmd" "http\.server" && ! has "$cmd" "--bind[[:space:]=]+127\.0\.0\.1|-b[[:space:]]+127\.0\.0\.1" && deny "http.server without --bind 127.0.0.1"
-  runs=$(printf '%s' "$cmd" | command grep -oE -e 'systemd-run' | wc -l); scoped=$(printf '%s' "$cmd" | command grep -oE -e 'systemd-run[[:space:]]+--user[[:space:]]+--scope' | wc -l)
-  [ "$runs" -gt "$scoped" ] && deny "systemd-run without --user --scope starts a detached service"
-  has "$cmd" "${C}(tmux[[:space:]]+(new|new-session)[^;&|]*-d|at|batch)${E}|${C}screen[[:space:]]+-[a-zA-Z]*d" && deny "detached session or scheduled job"
-  has "$cmd" "--host[[:space:]=]+(0\.0\.0\.0|::)|--bind[[:space:]=]+(0\.0\.0\.0|::)|-H[[:space:]]+0\.0\.0\.0" && deny "server bound to all interfaces (use 127.0.0.1)"
-fi
-
-# The inspector may ssh, but only to read: an allow-list parser checks every command word, local and remote
-# (inside ssh '...', pct exec --, sh -c, $(...)), and anything unknown is denied.
-if [ "$role" = inspector ]; then
-  why=$(python3 -I "$(dirname "$0")/inspector_guard.py" --require-check "$cmd" 2>&1) || deny "not a read-only probe: $why"
-fi
-
-if [ "$role" != worker ]; then
-  # The capped form puts the real command inside bash -c '...': scan those payloads as commands, not as quoted text.
-  inner=$(printf '%s' "$cmd" | command grep -oE "(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+('[^']*'|\"[^\"]*\")" | sed -E "s/^(ba|z)?sh[^'\"]*[[:space:]]-[[:alnum:]]*c[[:space:]]+['\"]//; s/['\"]\$//")
-  bare=$(drop_scratch "$(printf '%s ; %s' "$cmd" "$inner")" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s#[0-9]?>>?[[:space:]]*/dev/null##g; s/[0-9]?>&[0-9]//g")
-  has "$bare" "${B}sed[[:space:]]+(-[[:alnum:]]*i|--in-place)" && deny "in-place edit (read-only role)"
-  has "$bare" "${B}(rm|mv|cp|tee|truncate|touch|mkdir|ln|wget|patch|chmod|chown|dd)[[:space:]]" && deny "file-writing command (read-only role)"
-  bare=$(printf '%s' "$bare" | sed -E 's#(^|[[:space:]])(-o|--output)[[:space:]=]+/dev/null##g')   # discarding output is not a write
-  has "$bare" "${B}curl[^|;&]*[[:space:]](-[[:alnum:]]*[oO]|--output|--remote-name)|${B}git[[:space:]]+clone${E}|${B}gh[[:space:]]+repo[[:space:]]+clone${E}|${B}perl[[:space:]]+-[[:alnum:]]*i" && deny "download or in-place write (read-only role)"
-  has "$bare" "(^|[^<>=-])>>?[[:space:]]*[^[:space:]&=]" && deny "output redirect into a file (read-only role)"
-fi
 exit 0
