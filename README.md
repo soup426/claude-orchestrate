@@ -70,6 +70,12 @@ The defaults suit a 32 GB machine: 14G for the whole slice, 6G per capped run.
 
 `agents/inspector.md` ships with only Read, Grep, Glob, Bash and ToolSearch. If you have MCP servers for your infrastructure (for example Proxmox, NetBox or Grafana), add their read-only tools to its `tools:` line by exact name, such as `mcp__proxmox__get_cluster_resources`. List tools one by one: naming a whole server would also give it that server's write tools. The `verifier` expects the Playwright MCP server (`mcp__playwright__*`) for web pages; without it, it can still check CLI output.
 
+### A read-only account on your hosts
+
+The inspector's allow-list (`hooks/inspector_guard.py`) reads command text, so on a host it is only as strong as its parser. `deploy/inspector-account.sh install <ssh host> <public key file>` adds the real boundary: an `inspector` user with no password and no sudo, whose one key can only run `deploy/inspector-shell`, which passes a command on only if the same guard allows it. The key line is `restrict,command="..."` (no shell, no forwarding, no terminal), and the key file, the wrapper and the guard are root-owned. The account joins `adm` and `systemd-journal` when they exist, so logs and the journal stay readable; anything that needs root (`pct`, `qm`, `docker`, `sshd -T`, `dmesg`) does not work through it. `deploy/inspector-account.sh remove <ssh host>` deletes the user and the files.
+
+Use a dedicated key, and a `Host` alias in `~/.ssh/config` with `User inspector`, `IdentityFile` and `IdentitiesOnly yes`; open that connection from the main session, since the sandbox hides your keys from the agents. The script changes the host, so read it and run it yourself. Its remote half is checked only by running it: afterwards confirm from a new connection that a read works and that a write, a login shell, `-N -L` forwarding and `sftp` are refused.
+
 ## Usage
 
 Ask Claude Code for a job that splits into independent changes, or type `/orchestrate`:

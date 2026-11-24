@@ -1,0 +1,13 @@
+#!/bin/bash
+# Forced command for the read-only `inspector` account (authorized_keys: restrict,command="<this file>").
+# sshd runs it for every login with that key. The command the client asked for arrives in SSH_ORIGINAL_COMMAND;
+# it runs only if inspector_guard.py (installed beside this file) allows it, with an empty environment.
+# The account's own permissions are the boundary; the guard keeps honest mistakes out of what the account can reach.
+cmd=${SSH_ORIGINAL_COMMAND-}
+[ -n "$cmd" ] || { echo "inspector: read-only commands only, no login shell" >&2; exit 1; }
+here=$(dirname "$(readlink -f "$0")")
+# On stdin, so the command text is never read as one of the guard's own options. Any failure refuses.
+why=$(printf '%s' "$cmd" | python3 -I "$here/inspector_guard.py" 2>&1) || { echo "inspector: refused: $why" >&2; exit 1; }
+# bash, because that is the shell the guard's parser models.
+exec env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME="${HOME-/}" USER="${USER-inspector}" \
+  LANG=C.UTF-8 bash --noprofile --norc -c "$cmd"
