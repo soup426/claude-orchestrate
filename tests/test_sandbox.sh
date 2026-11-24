@@ -69,6 +69,11 @@ for r in reviewer researcher; do ok "$r: the secret is not in the sandbox's firs
 F=$W/fh; mkdir -p "$F/.ssh/cm"; : > "$F/.ssh/config"; : > "$F/.ssh/id_test"; : > "$F/.ssh/cm/sock"
 ok "inspector: config and sockets come back, keys do not" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "ls -A $F/.ssh $F/.ssh/cm" | tr '\n' ' ')" "$F/.ssh: cm config  $F/.ssh/cm: sock "
 ok "researcher: nothing comes back" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run researcher "ls -A $F/.ssh | wc -l")" 0
+mkdir -p "$F/.config/orchestrate" "$F/bin"; : > "$F/.ssh/cm/sock2"; echo rooty > "$F/.config/orchestrate/ssh-hidden-hosts"
+printf '#!/bin/sh\n[ "$2" = rooty ] && echo "controlpath %s/.ssh/cm/sock" || echo "controlpath %s/.ssh/cm/none"\n' "$F" "$F" > "$F/bin/ssh"; chmod +x "$F/bin/ssh"
+ok "inspector: a listed host's open connection is masked, the others stay" "$(PATH=$F/bin:$PATH HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "stat -c %F $F/.ssh/cm/sock $F/.ssh/cm/sock2" | tr '\n' ' ')" "character special file regular empty file "
+echo "bad name!" > "$F/.config/orchestrate/ssh-hidden-hosts"
+has "inspector: an unreadable list denies" "$(PATH=$F/bin:$PATH HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm hook inspector "true")" '"permissionDecision": "deny"'
 ok "no systemd user manager" "$(run reviewer 'systemd-run --user --scope --quiet true 2>/dev/null; echo $?' | tail -1 | tr -d 0)" "1"
 [ -S /run/docker.sock ] && ok "docker socket masked" "$(run reviewer 'test -S /run/docker.sock; echo $?')" 1
 # A daemon socket under $HOME: a read-only bind alone would still let connect() through.

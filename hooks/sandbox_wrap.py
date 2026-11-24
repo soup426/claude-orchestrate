@@ -45,6 +45,28 @@ def socket_dir():
     return d if os.path.isdir(d) else None
 
 
+def hidden_masters():
+    """Open connections no agent may use: each ssh alias listed in ~/.config/orchestrate/ssh-hidden-hosts (one per
+    line) is a privileged login to a host that also has a read-only account, reached through another alias."""
+    try:
+        with open(os.path.expanduser("~/.config/orchestrate/ssh-hidden-hosts")) as f:
+            names = f.read().split()
+    except FileNotFoundError:
+        return []
+    found = []
+    for n in names:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", n):
+            raise ValueError("ssh-hidden-hosts: not a host alias")
+        g = subprocess.run(["ssh", "-G", n], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"^controlpath (/.+)$", g, re.M)
+        if not m:
+            raise ValueError(f"ssh-hidden-hosts: no control path for {n}")
+        if os.path.exists(m.group(1)):
+            # shortcut: a connection opened while the agent's command runs is not masked, open it before dispatch
+            found.append(m.group(1))
+    return found
+
+
 def find_sockets(top, depth):
     """Unix sockets under top. A slow or failing search raises, which denies the call."""
     # shortcut: depth-limited so the hook stays fast, a socket nested deeper stays reachable (README, Limits)
@@ -136,6 +158,8 @@ def main():
                     b += ["--ro-bind", p, p]
             if in_ssh:
                 b += ["--ro-bind", socks, socks]
+            for sock in hidden_masters():
+                b += ["--ro-bind", "/dev/null", sock]
         elif socks and not in_ssh:
             b += ["--tmpfs", socks]
         cap = "" if os.environ.get("ORCHESTRATE_SANDBOX_NO_CAP") else CAP
