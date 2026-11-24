@@ -6,7 +6,7 @@ Usage: inspector_guard.py "<command>"  -> exit 0 and no output if allowed, else 
 Two layers:
 1. A strict shell subset. Anything where bash and this parser could disagree is refused before parsing:
    ANSI-C or locale quoting ($'..', $".."), ${..}, $(..), backticks, process substitution, here-docs,
-   unquoted # or backslash, case, and backgrounding. Plain $var and "$var" stay allowed.
+   unquoted # or backslash, case, and backgrounding. Only $? is allowed: a variable could hold an option.
 2. Per-command allow-lists: every command word, including inside `ssh host '...'`, `pct exec <id> -- ...`
    and `sh -c '...'`, must be a known read-only command; risky commands also need their verb first and
    only known options (with the options that take a value known), so an option value cannot hide a verb.

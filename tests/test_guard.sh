@@ -90,5 +90,33 @@ for c in "smartctl -lerror /dev/sda" "systemctl status nginx --no-pager -n 20"; 
 # inspector: -H/-M in option clusters and long-option abbreviations; podman remote connections
 for c in "systemctl status -lH otherhost sshd" "systemctl status --hos=otherhost sshd" "loginctl list-sessions -aH otherhost" "podman ps --remote --url ssh://other" "podman ps -r"; do t inspector deny "$c"; done
 for c in "systemctl status nginx --no-pager -l" "podman ps -a"; do t inspector allow "$c"; done
+# review loop round 1: pacman queries for all roles, interpreter flags before -m, a systemd-run scope without slice+MemoryMax is no cap
+for c in "pacman -Qi bash" "pacman -Q"; do t researcher allow "$c"; done
+for c in "pacman -Q x; pacman -S y" "pacman -Syu"; do t researcher deny "$c"; done
+for c in "python3 -I -m pytest" "python3 -u -m unittest" "systemd-run --user --scope pytest" "systemd-run --user --scope -p MemoryMax=6G pytest"; do t worker deny "$c"; done
+t worker allow "systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- bash -c 'cd /work/r && python3 -I -m pytest'"
+# review loop round 2: systemd-run rule anchored to command position; verifier & inside a quoted URL is not a background job
+t reviewer allow "grep -n 'systemd-run\\|pytest' notes.md"
+t verifier allow "curl -s 'http://127.0.0.1:8000/x?a=1&b=2'"
+for c in "sleep 600 & echo started" "bash -c 'sleep 600 &'"; do t verifier deny "$c"; done
+t inspector allow "ssh -O check host1 && ssh -o BatchMode=yes host1 'uptime'"
+# security: quote stripping removes single-quoted spans only, paired the way bash pairs them
+for c in 'echo "$(pytest)"' 'echo "`make`"' "echo \"it's\"; pytest; echo \"x'\"" "echo \"'\" ; pytest ; echo \"'\"" "echo \\'; pytest; echo \\'"; do t worker deny "$c"; done
+for c in 'echo "$(sleep 600 &)"' "echo \"'\" ; sleep 600 & echo \"'\"" "echo \\'; sleep 600 & echo \\'"; do t verifier deny "$c"; done
+t worker allow "grep -rn 'make test' README.md"
+# security: no quote stripping across comments, heredocs, $'..' or an unclosed quote
+NL=$'\n'
+for x in "pytest|worker" "sleep 600 &|verifier"; do r=${x#*|}; c=${x%%|*}
+  t $r deny "# don't skip${NL}$c"; t $r deny "cat <<EOF${NL}it's${NL}EOF${NL}$c${NL}echo 'x'"; t $r deny "echo \$'\\''; $c; echo \$'\\''"; t $r deny "echo x # '${NL}$c${NL}# '"; t $r deny "echo 'unclosed; $c"
+done
+# security: strip only from simple read commands (nested quotes in substitutions, sh flags before -c, eval)
+for x in "pytest|worker" "sleep 600 &|verifier"; do r=${x#*|}; c=${x%%|*}
+  t $r deny "echo \"\$(echo \"'\")\"; $c; echo \\'"; t $r deny "echo \"\${x:-\"'\"}\"; $c; echo \\'"; t $r deny "bash -e -c '$c'"; t $r deny "sh -x -c '$c'"; t $r deny "(echo 'a'; $c)"
+done
+t verifier deny "eval 'sleep 600 &'"
+t reviewer allow "grep -c '^pytest\$' f | head"
+# security: process substitution and function bodies stop quote stripping
+for c in "cat <(eval 'a; pytest')" "grep x <(eval 'a; pytest')" "cat <(bash -e -c 'a; make')" "echo a >(eval 'a; make')" "cat () ( eval 'a; make' ) && cat" "cat () { eval 'a; make'; } && cat"; do t worker deny "$c"; done
+for c in "cat <(eval 'python3 -m http.server --bind 127.0.0.1 &')" "cat <(bash -e -c 'sleep 600 &')"; do t verifier deny "$c"; done
 echo "cases=$n fails=$fails"
 [ "$fails" -eq 0 ]
