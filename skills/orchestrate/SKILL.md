@@ -9,7 +9,7 @@ argument-hint: "<task description>"
 You are the planner and integrator. Sonnet subagents do the edits and checks; you plan, write briefs, judge results and own the final answer. If the superpowers plugin is installed, this replaces its subagent-driven-development and dispatching-parallel-agents skills; the rest of its process still applies around it.
 
 Ground rules:
-- Spawn roles with `subagent_type`: `researcher`, `inspector`, `worker`, `reviewer`, `security`, `verifier`. Do not pass `model` (settings force Sonnet). No Workflow tool, no worktree isolation. You use the advisor; subagents do not.
+- Spawn roles with `subagent_type`: `researcher`, `inspector`, `worker`, `reviewer`, `security`, `verifier`. Do not pass `model` (settings force Sonnet). No Workflow tool, no worktree isolation. You use the advisor; subagents do not. If SendMessage and TaskStop are deferred tools, load both (`select:SendMessage,TaskStop`) before the first Agent call.
 - Your own test and build commands, and a worker's Check, run under the memory cap: `systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- bash -c 'cd <R> && <command>'`. The read-only agents are capped and sandboxed by a hook, so their briefs never mention it. Exit 137 or "Killed" is the cap: never rerun uncapped; rerun once alone, since the slice's 14G is shared. At most 2 project-wide builds at once.
 - Paths in commands, briefs and the ledger are literal absolute paths: Bash state does not persist between calls and agents start outside the repo.
 - Do tasks under `~/.claude` yourself: workers' edits there are refused.

@@ -12,6 +12,7 @@ prompt=${2:-$here/smoke-prompt.txt}
 [ -f "$prompt" ] || { echo "no prompt file: $prompt" >&2; exit 2; }
 [ -z "$(git -C "$repo" status --porcelain)" ] || { echo "toy repo is not clean: $repo" >&2; exit 2; }
 start=$(git -C "$repo" branch --show-current); stamp=$(date +%Y%m%d-%H%M%S)
+umask 077   # the debug logs hold a whole session
 out=${SMOKE_OUT:-${TMPDIR:-/tmp}/orchestrate-smoke-$stamp}; mkdir -p "$out"
 run() {   # $1 = round number, rest = claude arguments
   local n=$1; shift

@@ -36,7 +36,7 @@ light=1   # every ;/&&/||/| segment starts with estate-warm or ssh, with no lone
 [[ $cmd == *$'\n'* || $cmd =~ (^|[^&])\&([^&]|$) || $cmd == *'$('* || $cmd == *'`'* || $cmd == *'<('* || $cmd == *'>('* ]] && light=0
 while IFS= read -r seg; do [[ $seg =~ ^[[:space:]]*(estate-warm|ssh)([[:space:]]|$) ]] || light=0; done < <(printf '%s\n' "$cmd" | sed -E 's/(\&\&|\|\||;|\|)/\n/g')
 [ "$light" = 1 ] && exit 0
-[[ $cmd =~ ^[[:space:]]*sleep[[:space:]]+[0-9.]+[smhd]?[[:space:]]*$ ]] && exit 0   # a bare timer (the orchestrate watchdog) is light
+[[ $cmd =~ ^[[:space:]]*sleep[[:space:]]+[0-9.]+[smhd]?[[:space:]]*$ ]] && exit 0   # a bare timer is light
 [[ $cmd =~ (^|[;&|[:space:]])(while|until)[[:space:]].*do[[:space:]]+sleep[[:space:]] ]] && exit 0   # so is a wait loop (`x=...; while [ ... ]; do sleep 30; done`)
 
 st=$HOME/.local/state/orchestrate

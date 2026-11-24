@@ -41,17 +41,31 @@ def socket_dir():
     return d if os.path.isdir(d) else None
 
 
+def find_sockets(top, depth):
+    """Unix sockets under top. A slow or failing search raises, which denies the call."""
+    # shortcut: depth-limited so the hook stays fast, a socket nested deeper stays reachable (README, Limits)
+    r = subprocess.run(["find", top, "-xdev", "-maxdepth", str(depth), "-type", "s"],
+                       capture_output=True, text=True, timeout=3)
+    return [p for p in r.stdout.split("\n") if p]
+
+
 def ssh_config_copy():
     """ssh refuses /etc/ssh seen through a user namespace (owner shows as nobody), so bind a user-owned copy."""
     dst = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "orchestrate", "etc-ssh")
     if not os.path.isdir(dst):   # shortcut: copied once and never refreshed, delete the directory after editing /etc/ssh
-        os.makedirs(dst)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        tmp = "%s.%d" % (dst, os.getpid())   # build beside it, then rename: a parallel agent never sees half a copy
+        os.makedirs(tmp)
         for name in ("ssh_config", "ssh_config.d", "ssh_known_hosts"):
             src = os.path.join("/etc/ssh", name)
             if os.path.isdir(src):
-                shutil.copytree(src, os.path.join(dst, name))
+                shutil.copytree(src, os.path.join(tmp, name))
             elif os.path.isfile(src):
-                shutil.copy(src, dst)
+                shutil.copy(src, tmp)
+        try:
+            os.rename(tmp, dst)
+        except OSError:   # another agent finished first
+            shutil.rmtree(tmp, ignore_errors=True)
     return dst
 
 
@@ -71,6 +85,8 @@ def main():
             raise ValueError("unexpected session id or transcript path")
         scratch = f"/tmp/claude-{os.getuid()}/{proj}/{sid}"   # from the hook input, never from the command text
         os.makedirs(scratch, exist_ok=True)
+        if os.path.realpath(scratch) != scratch or os.stat(scratch).st_uid != os.getuid():
+            raise ValueError("scratch directory is a symlink or not ours")   # someone else pre-created it in /tmp
         ssh_ok = False
         if role == "inspector":
             ssh_ok, why = read_only_probe(cmd)
@@ -85,15 +101,30 @@ def main():
         run_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
         if os.path.isdir(run_dir):
             b += ["--tmpfs", run_dir]                      # user bus, systemd --user, keyring, podman socket
-        for sock in ("/run/docker.sock", "/run/dbus/system_bus_socket", "/run/containerd/containerd.sock"):
-            if os.path.exists(sock):
-                b += ["--ro-bind", "/dev/null", sock]
         b += ["--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "SSH_AUTH_SOCK",
               "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--bind", scratch, scratch]
-        socks = socket_dir()
+        # A read-only bind does not stop connect(), and --unshare-net does not cover path sockets: every daemon
+        # socket (docker, system bus, pcscd, app control sockets under $HOME) gets /dev/null bound over it.
+        home, socks = os.path.expanduser("~"), socket_dir()
+        keys = [d for d in (os.path.join(home, ".ssh"), os.path.join(home, ".gnupg")) if os.path.isdir(d)]
+        hidden = ["/tmp", run_dir] + keys + ([socks] if socks else [])   # masked or handled as whole directories below
+        if NET[role]:
+            hidden.append("/run/systemd/resolve")   # name lookups for the roles that keep the network
+        for sock in find_sockets("/run", 3) + find_sockets(home, 5):
+            if not any(sock == h or sock.startswith(h + "/") for h in hidden):
+                b += ["--ro-bind", "/dev/null", sock]
+        for d in keys:
+            b += ["--tmpfs", d]                            # private keys: no role gets them, a master socket needs none
+        in_ssh = bool(socks) and keys[:1] == [os.path.join(home, ".ssh")] and socks.startswith(keys[0] + "/")
         if ssh_ok:
             b += ["--ro-bind", ssh_config_copy(), "/etc/ssh"]
-        elif socks:
+            for name in ("config", "config.d", "known_hosts"):
+                p = os.path.join(home, ".ssh", name)
+                if os.path.exists(p):
+                    b += ["--ro-bind", p, p]
+            if in_ssh:
+                b += ["--ro-bind", socks, socks]
+        elif socks and not in_ssh:
             b += ["--tmpfs", socks]
         cap = "" if os.environ.get("ORCHESTRATE_SANDBOX_NO_CAP") else CAP
         new = cap + " ".join(shlex.quote(x) for x in b) + " -- bash -c " + shlex.quote(cmd)

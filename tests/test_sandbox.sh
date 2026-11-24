@@ -39,7 +39,7 @@ done
 run reviewer "echo x > $W/a" >/dev/null;                               ok "redirect into home" "$(ls "$W" | tr '\n' ' ')" "cm "
 run reviewer "python3 -c \"open('$W/b','w').write('x')\"" >/dev/null;  ok "write from an interpreter" "$(ls "$W" | tr '\n' ' ')" "cm "
 run security "touch $W/c; cp /etc/hostname $W/d; mkdir $W/e" >/dev/null; ok "touch, cp, mkdir" "$(ls "$W" | tr '\n' ' ')" "cm "
-run researcher "rm -f $socks/master-socket" >/dev/null;                ok "rm" "$(ls "$socks")" master-socket
+: > "$W/keep"; run researcher "rm -f $W/keep" >/dev/null;              ok "rm" "$(ls "$W" | tr '\n' ' ')" "cm keep "; rm -f "$W/keep"
 git -C "$W" init -q r && echo one > "$W/r/f" && git -C "$W/r" add f && git -C "$W/r" -c user.name=t -c user.email=t@t commit -qm one && echo two > "$W/r/f"
 run reviewer "git -C $W/r stash" >/dev/null;                           ok "git stash leaves the tree alone" "$(cat "$W/r/f")" two
 has "read-only git works" "$(run reviewer "git -C $W/r status --short; git -C $W/r diff --stat")" " M f"
@@ -64,6 +64,17 @@ ok "runtime dir is empty" "$(run reviewer 'ls -A "$XDG_RUNTIME_DIR" | wc -l')" 0
 ok "no bus, no agent in env" "$(run reviewer 'echo "[$DBUS_SESSION_BUS_ADDRESS][$SSH_AUTH_SOCK]"')" "[][]"
 ok "no systemd user manager" "$(run reviewer 'systemd-run --user --scope --quiet true 2>/dev/null; echo $?' | tail -1 | tr -d 0)" "1"
 [ -S /run/docker.sock ] && ok "docker socket masked" "$(run reviewer 'test -S /run/docker.sock; echo $?')" 1
+# A daemon socket under $HOME: a read-only bind alone would still let connect() through.
+python3 -c "import socket,time; s=socket.socket(socket.AF_UNIX); s.bind('$W/app.sock'); s.listen(1); time.sleep(120)" & spid=$!
+for i in 1 2 3 4 5 6 7 8 9 10; do [ -S "$W/app.sock" ] && break; sleep 0.2; done
+conn="python3 -c \"import socket; s=socket.socket(socket.AF_UNIX); s.connect('$W/app.sock'); print('CONNECTED')\" 2>&1 | tail -1"
+ok "the test socket is live" "$(bash -c "$conn")" CONNECTED
+for r in reviewer researcher verifier; do hasnt "$r cannot connect to a socket under home" "$(run "$r" "$conn")" CONNECTED; done
+kill "$spid" 2>/dev/null; rm -f "$W/app.sock"
+if [ -d "$HOME/.ssh" ]; then   # private keys: hidden from every role, the config stays for the roles that may ssh
+  for r in reviewer researcher verifier; do ok "$r: ~/.ssh is empty" "$(run "$r" 'ls -A ~/.ssh | wc -l')" 0; done
+  ok "inspector: no private keys" "$(run inspector 'ls -A ~/.ssh | grep -c -v -x -e config -e config.d -e known_hosts -e cm')" 0
+fi
 ok "no serial devices" "$(run reviewer 'ls /dev | grep -c -E "ttyUSB|ttyACM|sd[a-z]|nvme"')" 0
 
 # 6. ssh master sockets: hidden unless the role may ssh, and for the verifier only when the whole command is a probe.

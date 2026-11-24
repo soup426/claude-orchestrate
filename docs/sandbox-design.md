@@ -94,3 +94,5 @@ package installs, and the remote half of ssh (`inspector_guard.py`, since the sa
   on the old guard gave 8 false refusals in one reviewer.
 - Not done: a worker sandbox (the other two open questions stay open), and a live ssh test of the inspector and
   verifier paths against real hosts (covered only by `tests/test_sandbox.sh` with fake sockets).
+- Limit of the three roles that keep the host network: abstract unix sockets (for example an X11 socket) stay
+  reachable, and readable files such as ssh keys can be sent out. Only reviewer and security are cut off.
