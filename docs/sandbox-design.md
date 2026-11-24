@@ -96,3 +96,6 @@ package installs, and the remote half of ssh (`inspector_guard.py`, since the sa
   verifier paths against real hosts (covered only by `tests/test_sandbox.sh` with fake sockets).
 - Limit of the three roles that keep the host network: abstract unix sockets (for example an X11 socket) stay
   reachable, and readable files such as ssh keys can be sent out. Only reviewer and security are cut off.
+- Added after the first release: the environment inside the sandbox is an allowlist (`--clearenv` plus `PATH`,
+  `HOME`, locale, `TERM`, `XDG_RUNTIME_DIR`, `VIRTUAL_ENV`, and proxy and CA variables for the roles with network).
+  If a tool an agent needs depends on another variable, add it to `ENV` in `hooks/sandbox_wrap.py`.

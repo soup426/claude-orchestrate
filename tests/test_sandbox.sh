@@ -62,6 +62,12 @@ for r in researcher inspector verifier; do ok "$r network" "$(run "$r" "readlink
 # 5. Ways out of a read-only root: the user bus, docker, the ssh agent, devices.
 ok "runtime dir is empty" "$(run reviewer 'ls -A "$XDG_RUNTIME_DIR" | wc -l')" 0
 ok "no bus, no agent in env" "$(run reviewer 'echo "[$DBUS_SESSION_BUS_ADDRESS][$SSH_AUTH_SOCK]"')" "[][]"
+export ORCH_TEST_SECRET=s3cret   # stands in for an API token in the Claude Code process environment
+for r in reviewer researcher; do ok "$r: environment is an allowlist" "$(run "$r" 'echo "[$ORCH_TEST_SECRET][$HOME][${PATH:+path}][$PYTHONDONTWRITEBYTECODE]"')" "[][$HOME][path][1]"; done
+# A master-socket directory inside ~/.ssh (the usual ControlPath): bound back for the ssh roles only, without the keys.
+F=$W/fh; mkdir -p "$F/.ssh/cm"; : > "$F/.ssh/config"; : > "$F/.ssh/id_test"; : > "$F/.ssh/cm/sock"
+ok "inspector: config and sockets come back, keys do not" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "ls -A $F/.ssh $F/.ssh/cm" | tr '\n' ' ')" "$F/.ssh: cm config  $F/.ssh/cm: sock "
+ok "researcher: nothing comes back" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run researcher "ls -A $F/.ssh | wc -l")" 0
 ok "no systemd user manager" "$(run reviewer 'systemd-run --user --scope --quiet true 2>/dev/null; echo $?' | tail -1 | tr -d 0)" "1"
 [ -S /run/docker.sock ] && ok "docker socket masked" "$(run reviewer 'test -S /run/docker.sock; echo $?')" 1
 # A daemon socket under $HOME: a read-only bind alone would still let connect() through.

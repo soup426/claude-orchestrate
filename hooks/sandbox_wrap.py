@@ -9,10 +9,14 @@ The main session, the worker and unknown agent types pass through untouched (exi
 The allow skips the permission classifier for these calls, so every error after the role is known is a deny.
 Design and probes: docs/sandbox-design.md. Tests: tests/test_sandbox.sh (they run the rewritten commands for real).
 """
-import json, os, re, shlex, shutil, subprocess, sys
+import json, os, re, shlex, shutil, subprocess, sys, tempfile
 
 NET = {"reviewer": False, "security": False, "researcher": True, "inspector": True, "verifier": True}
 CAP = "systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- "
+ENV = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "XDG_RUNTIME_DIR",
+       "VIRTUAL_ENV")
+ENV_NET = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE",
+           "SSL_CERT_DIR")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -44,7 +48,7 @@ def socket_dir():
 def find_sockets(top, depth):
     """Unix sockets under top. A slow or failing search raises, which denies the call."""
     # shortcut: depth-limited so the hook stays fast, a socket nested deeper stays reachable (README, Limits)
-    r = subprocess.run(["find", top, "-xdev", "-maxdepth", str(depth), "-type", "s"],
+    r = subprocess.run(["find", "-H", top, "-xdev", "-maxdepth", str(depth), "-type", "s"],
                        capture_output=True, text=True, timeout=3)
     return [p for p in r.stdout.split("\n") if p]
 
@@ -54,18 +58,22 @@ def ssh_config_copy():
     dst = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "orchestrate", "etc-ssh")
     if not os.path.isdir(dst):   # shortcut: copied once and never refreshed, delete the directory after editing /etc/ssh
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        tmp = "%s.%d" % (dst, os.getpid())   # build beside it, then rename: a parallel agent never sees half a copy
-        os.makedirs(tmp)
-        for name in ("ssh_config", "ssh_config.d", "ssh_known_hosts"):
-            src = os.path.join("/etc/ssh", name)
-            if os.path.isdir(src):
-                shutil.copytree(src, os.path.join(tmp, name))
-            elif os.path.isfile(src):
-                shutil.copy(src, tmp)
+        # build beside it, then rename: a parallel agent never sees half a copy
+        tmp = tempfile.mkdtemp(dir=os.path.dirname(dst), prefix="etc-ssh.")
         try:
+            for name in ("ssh_config", "ssh_config.d", "ssh_known_hosts"):
+                src = os.path.join("/etc/ssh", name)
+                if os.path.isdir(src):
+                    shutil.copytree(src, os.path.join(tmp, name))
+                elif os.path.isfile(src):
+                    shutil.copy(src, tmp)
+            os.chmod(tmp, 0o755)   # mkdtemp makes it 700; keep what the earlier copy had
             os.rename(tmp, dst)
-        except OSError:   # another agent finished first
-            shutil.rmtree(tmp, ignore_errors=True)
+        except OSError:
+            if not os.path.isdir(dst):   # not the race another agent won: a real copy error
+                raise
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)   # gone already after a successful rename
     return dst
 
 
@@ -83,9 +91,11 @@ def main():
         sid, proj = d["session_id"], os.path.basename(os.path.dirname(d["transcript_path"]))
         if not re.fullmatch(r"[0-9a-f-]{36}", sid) or not re.fullmatch(r"[A-Za-z0-9_.-]+", proj) or proj in (".", ".."):
             raise ValueError("unexpected session id or transcript path")
-        scratch = f"/tmp/claude-{os.getuid()}/{proj}/{sid}"   # from the hook input, never from the command text
+        base = f"/tmp/claude-{os.getuid()}"
+        scratch = f"{base}/{proj}/{sid}"   # from the hook input, never from the command text
         os.makedirs(scratch, exist_ok=True)
-        if os.path.realpath(scratch) != scratch or os.stat(scratch).st_uid != os.getuid():
+        if (os.path.realpath(scratch) != scratch or os.stat(scratch).st_uid != os.getuid()
+                or os.lstat(base).st_uid != os.getuid()):   # whoever owns the parent could swap the leaf later
             raise ValueError("scratch directory is a symlink or not ours")   # someone else pre-created it in /tmp
         ssh_ok = False
         if role == "inspector":
@@ -101,8 +111,7 @@ def main():
         run_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
         if os.path.isdir(run_dir):
             b += ["--tmpfs", run_dir]                      # user bus, systemd --user, keyring, podman socket
-        b += ["--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "SSH_AUTH_SOCK",
-              "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--bind", scratch, scratch]
+        b += ["--clearenv", "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--bind", scratch, scratch]
         # A read-only bind does not stop connect(), and --unshare-net does not cover path sockets: every daemon
         # socket (docker, system bus, pcscd, app control sockets under $HOME) gets /dev/null bound over it.
         home, socks = os.path.expanduser("~"), socket_dir()
@@ -113,8 +122,8 @@ def main():
         for sock in find_sockets("/run", 3) + find_sockets(home, 5):
             if not any(sock == h or sock.startswith(h + "/") for h in hidden):
                 b += ["--ro-bind", "/dev/null", sock]
-        for d in keys:
-            b += ["--tmpfs", d]                            # private keys: no role gets them, a master socket needs none
+        for k in keys:
+            b += ["--tmpfs", k]                            # private keys: no role gets them, a master socket needs none
         in_ssh = bool(socks) and keys[:1] == [os.path.join(home, ".ssh")] and socks.startswith(keys[0] + "/")
         if ssh_ok:
             b += ["--ro-bind", ssh_config_copy(), "/etc/ssh"]
@@ -127,7 +136,11 @@ def main():
         elif socks and not in_ssh:
             b += ["--tmpfs", socks]
         cap = "" if os.environ.get("ORCHESTRATE_SANDBOX_NO_CAP") else CAP
-        new = cap + " ".join(shlex.quote(x) for x in b) + " -- bash -c " + shlex.quote(cmd)
+        # The environment is an allowlist: tokens in the Claude Code process env never reach an agent that has the
+        # network. Values are expanded by the shell that runs the command ("$PATH"), so its PATH is the one kept.
+        keep = [v for v in ENV + (ENV_NET if NET[role] else ()) if v in os.environ]
+        env = "".join(f' --setenv {v} "${v}"' for v in keep)
+        new = cap + " ".join(shlex.quote(x) for x in b) + env + " -- bash -c " + shlex.quote(cmd)
         out("allow", f"sandboxed ({role})", {**ti, "command": new})
     except SystemExit:
         raise
