@@ -56,8 +56,8 @@ t deny  "per command: first try of a dev server" "$(j s20 true 'npm run dev')"
 t allow "per command: the retry passes" "$(j s20 true 'npm run dev')"
 t deny  "per command: a different job still gets its nudge" "$(j s20 true 'python3 sweep.py')"
 # host-write check: read-only probes never ask; a host change while review is owed asks
-hw() {  # hw <want ask|none> <label> <command> [transcript] [cwd]
-  n=$((n+1)); out=$(printf '%s' "$3" | jq -Rsc --arg t "${4:-}" --arg d "${5:-}" '{session_id:"hw",tool_input:{command:.,run_in_background:false},transcript_path:$t,cwd:$d}' | HOME=$W/hp bash "$H" 2>/dev/null)
+hw() {  # hw <want ask|none> <label> <command> [transcript] [cwd] [session, default one per case] [tool_use_id]
+  n=$((n+1)); out=$(printf '%s' "$3" | jq -Rsc --arg t "${4:-}" --arg d "${5:-}" --arg s "${6:-hw$n}" --arg u "${7:-tu$n}" '{session_id:$s,tool_use_id:$u,tool_input:{command:.,run_in_background:false},transcript_path:$t,cwd:$d}' | HOME=$W/hp bash "$H" 2>/dev/null)
   got=$(jq -r '.hookSpecificOutput.permissionDecision // "none"' <<<"${out:-{\}}" 2>/dev/null); [ "$got" = "$1" ] || { echo "WRONG want=$1 got=$got: $2"; fails=$((fails+1)); }
 }
 mkdir -p "$W/hp/Projects/r/deploy" && : > "$W/hp/Projects/r/deploy/setup.sh"; TE=$W/edited.jsonl; TR=$W/reviewed.jsonl
@@ -76,4 +76,23 @@ hw none "scp from the repo, reviewed" "scp $W/hp/Projects/r/deploy/setup.sh pve:
 hw none "scp from the host to here" "scp pve:/etc/x /tmp/x"
 hw ask  "scp while review is owed" "scp $W/hp/Projects/r/deploy/setup.sh pve:/root/" "$TE"
 hw ask  "ssh-copy-id while review is owed" "ssh-copy-id pve" "$TE"
+# once per owed state: after the user approved one asked host write, the next ones pass until the code changes again
+ok() { printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"%s"}]},"permissionDecision":{"decision":"%s","source":"%s"}}\n' "$1" "$2" "${3:-user_temporary}"; }
+TA=$W/approved.jsonl; { cat "$TE"; ok o1 reject; ok o2 accept; ok c1 accept config; } > "$TA"
+TN=$W/edited-again.jsonl; { cat "$TA"; printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s"}}]}}\n' "$W/hp/Projects/r/deploy/setup.sh"; } > "$TN"
+hw ask  "once: the first host write asks" "ssh pve 'systemctl restart a'" "$TE" "" once o1
+hw ask  "once: the asked call was rejected, so the next one asks" "ssh pve 'systemctl restart b'" "$TA" "" once o2
+hw none "once: the asked call was approved, so the next one passes" "ssh pve 'systemctl restart c'" "$TA" "" once o3
+hw none "once: and so does the one after" "ssh pve 'rm /tmp/x'" "$TA" "" once o4
+hw ask  "once: a new code change asks again" "ssh pve 'systemctl restart d'" "$TN" "" once o5
+hw ask  "once: an approval in another session does not count" "ssh pve 'systemctl restart e'" "$TA" "" other o6
+hw ask  "once: no tool_use_id asks" "ssh pve 'systemctl restart f'" "$TA" "" noid ""
+hw ask  "once: and records nothing, so it asks again" "ssh pve 'systemctl restart g'" "$TA" "" noid ""
+hw ask  "once: an accept not made by the user (classifier, rule) does not count" "ssh pve 'systemctl restart h'" "$TE" "" cfg c1
+hw ask  "once: so the next one still asks" "ssh pve 'systemctl restart i'" "$TA" "" cfg c2
+# a background estate-warm with its output trimmed is light
+t allow "estate-warm 2>&1 | tail is light" "$(j s30 true 'estate-warm host1 2>&1 | tail -5')"
+t allow "estate-warm piped to head is light" "$(j s31 true 'estate-warm host1 host2 | head -3')"
+t deny  "a lone & after a redirect is still a background job" "$(j s32 true 'estate-warm x 2>&1 & python3 sweep.py')"
+t deny  "the light session is not used up" "$(j s30 true 'python3 sweep.py')"
 echo "bash-cap-gate cases=$n fails=$fails"; [ "$fails" -eq 0 ]

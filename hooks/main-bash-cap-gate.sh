@@ -3,7 +3,8 @@
 # refused once per command, so a long scan, batch job, build or test run gets the memory cap. A retry is allowed, so
 # the gate can never lock a session. It is a nudge, so every error
 # or missing input allows the command. Plain substring check, no shell parsing. Skipped: subagents (their own guard
-# hook covers them), foreground commands, a bare `sleep N`, `while`/`until ... do sleep` wait loops, estate-warm and ssh.
+# hook covers them), foreground commands, a bare `sleep N`, `while`/`until ... do sleep` wait loops, estate-warm and ssh
+# (optionally piped to head or tail).
 # Second check, every time and foreground too: a host-changing ssh/scp/rsync makes Claude Code ask the user first
 # while review is owed.
 in=$(cat)
@@ -22,6 +23,18 @@ if [[ $cmd =~ (^|[^A-Za-z0-9_.-])(ssh|scp|rsync|sftp|ssh-copy-id)([^A-Za-z0-9_-]
     case $owed in ''|no|*[!0-9]*) ;; *) why="code was changed after the last reviewer run" ;; esac
   fi
   if [ -n "$why" ]; then
+    # Once per owed state: when the user (not the classifier or a rule) approved the last asked host write of this
+    # session for this same unreviewed change, the next ones pass; a rejected or unanswered ask, or a newer change,
+    # asks again.
+    st=$HOME/.local/state/orchestrate; sid=$(jq -r '.session_id // empty' <<<"$in" 2>/dev/null)
+    tid=$(jq -r '.tool_use_id // empty' <<<"$in" 2>/dev/null)
+    if [[ $sid =~ ^[A-Za-z0-9_-]+$ ]] && mkdir -p "$st" 2>/dev/null; then
+      find "$st" -maxdepth 1 -name 'host-write-*' -mtime +1 -delete 2>/dev/null
+      m=$st/host-write-$sid-$owed.asked
+      prev=$(cat "$m" 2>/dev/null)
+      [ -n "$prev" ] && jq -en --arg id "$prev" 'any(inputs; .permissionDecision.decision == "accept" and (.permissionDecision.source // "" | startswith("user")) and any(.message.content[]?; .tool_use_id? == $id))' "$tp" >/dev/null 2>&1 && exit 0
+      [[ $tid =~ ^[A-Za-z0-9_-]+$ ]] && printf '%s' "$tid" > "$m" 2>/dev/null
+    fi
     jq -n --arg r "main-bash-host-write: this command changes a host and $why. Run the reviewer first (host scripts belong in the repo, committed, so it can see them), or approve if this was already reviewed." \
       '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
     exit 0
@@ -32,9 +45,9 @@ sid=$(jq -r '.session_id // empty' <<<"$in" 2>/dev/null)
 [ -z "$sid" ] || [ -z "$cmd" ] && exit 0
 case $sid in *[!A-Za-z0-9_-]*) exit 0 ;; esac   # session ids are UUIDs; anything else never reaches a file name
 case $cmd in *systemd-run*) exit 0 ;; esac
-light=1   # every ;/&&/||/| segment starts with estate-warm or ssh, with no lone & and no newline: no local memory
-[[ $cmd == *$'\n'* || $cmd =~ (^|[^&])\&([^&]|$) || $cmd == *'$('* || $cmd == *'`'* || $cmd == *'<('* || $cmd == *'>('* ]] && light=0
-while IFS= read -r seg; do [[ $seg =~ ^[[:space:]]*(estate-warm|ssh)([[:space:]]|$) ]] || light=0; done < <(printf '%s\n' "$cmd" | sed -E 's/(\&\&|\|\||;|\|)/\n/g')
+light=1   # every ;/&&/||/| segment starts with estate-warm, ssh, head or tail, with no lone & and no newline: no local memory
+[[ $cmd == *$'\n'* || $cmd =~ (^|[^&>])\&([^&>]|$) || $cmd == *'$('* || $cmd == *'`'* || $cmd == *'<('* || $cmd == *'>('* ]] && light=0
+while IFS= read -r seg; do [[ $seg =~ ^[[:space:]]*(estate-warm|ssh|head|tail)([[:space:]]|$) ]] || light=0; done < <(printf '%s\n' "$cmd" | sed -E 's/(\&\&|\|\||;|\|)/\n/g')
 [ "$light" = 1 ] && exit 0
 [[ $cmd =~ ^[[:space:]]*sleep[[:space:]]+[0-9.]+[smhd]?[[:space:]]*$ ]] && exit 0   # a bare timer is light
 [[ $cmd =~ (^|[;&|[:space:]])(while|until)[[:space:]].*do[[:space:]]+sleep[[:space:]] ]] && exit 0   # so is a wait loop (`x=...; while [ ... ]; do sleep 30; done`)
