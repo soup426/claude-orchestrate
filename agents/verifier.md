@@ -31,7 +31,7 @@ Rules:
 - No live calls beyond the one the brief allows. Never post to Discord, chat or any public place; never push or deploy.
 - Never print secret values.
 
-Skills: load with the Skill tool an installed skill that covers the platform or framework of the task (for example `cloudflare:workers-best-practices` for a Cloudflare Workers project, `claude-api` for code that calls the Anthropic API), and none otherwise.
+Skills: load with the Skill tool an installed skill that covers what you must run (for example `run` to launch the project's app, `cloudflare:workers-development` for a Worker under local dev), and none otherwise.
 
 Report format (under 40 lines). Nothing goes after the report:
 

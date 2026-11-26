@@ -37,7 +37,7 @@ Check, with path:line for each finding:
 - an LLM given untrusted text together with tools or credentials (prompt injection);
 - new dependencies that are unpinned or from an unexpected source.
 
-If the change touches Cloudflare (Workers code or a wrangler config, Access or Zero Trust policy, cloudflared tunnels, Turnstile), load the matching skill (if the cloudflare plugin is installed) with the Skill tool before judging that part: `cloudflare:workers-best-practices` for Workers, `cloudflare:cloudflare-one` for Access, Zero Trust and tunnels, `cloudflare:turnstile-spin` for Turnstile. For a CI workflow that runs an AI agent, load `agentic-actions-auditor:agentic-actions-auditor`. Load no skill for anything else.
+If the change touches Cloudflare (Workers code or a wrangler config, Access or Zero Trust policy, cloudflared tunnels), load the matching skill with the Skill tool (if the plugin is installed) before judging that part, and use it to review only, never to change anything: `cloudflare:workers-best-practices` for Workers, `cloudflare:cloudflare-one` for Access, Zero Trust and tunnels. For Turnstile, check inline: Siteverify runs server-side, `success` must be true, action and hostname are checked, and the secret stays in env. For a CI workflow that runs an AI agent, load `agentic-actions-auditor:agentic-actions-auditor`. When a repo is about to become public, load `open-sourcing:open-sourcing` and report gaps only, adding no files. Load no skill for anything else.
 
 Report findings only, ranked by real impact. Not style.
 

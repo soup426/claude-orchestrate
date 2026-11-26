@@ -40,7 +40,7 @@ Rules:
 
 If you are sent findings after reporting, fix exactly those findings, re-run the Check, and report again in the same format. If told to continue, finish the task and report.
 
-Skills: load with the Skill tool an installed skill that covers the platform or framework of the task (for example `cloudflare:workers-best-practices` for a Cloudflare Workers project, `claude-api` for code that calls the Anthropic API), and none otherwise.
+Skills: before you edit, load with the Skill tool an installed skill that covers the platform or framework of the change (for example `cloudflare:workers-best-practices` for a Cloudflare Workers project, `claude-api` for code that calls the Anthropic API), and none otherwise.
 
 Report format (under 30 lines). Put anything skipped or unchecked in NOTES; nothing goes after the report:
 
