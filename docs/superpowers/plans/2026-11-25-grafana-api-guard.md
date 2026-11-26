@@ -38,12 +38,12 @@
 **Interfaces:**
 - Produces: `python3 -I grafana_api_guard.py <regex>`; stdin hook JSON with `tool_input.{endpoint,method,headers}`.
 
-- [ ] **Step 1: Write the failing test** `tests/test_grafana_api_guard.sh`, helper `t <allow|deny> <label> <endpoint> [method] [headers-json] [regex]`, regex default `^/api/datasources/proxy/uid/vl/select/logsql/(query|hits|stats_query|stats_query_range|field_names|field_values)$`. Cases:
-  - allow `/api/datasources/proxy/uid/vl/select/logsql/query?query=_time%3A1h%20%2A%20%7C%20stats%20count%28%29`
+- [ ] **Step 1: Write the failing test** `tests/test_grafana_api_guard.sh`, helper `t <allow|deny> <label> <endpoint> [method] [headers-json] [regex]`, regex default `^/api/datasources/proxy/uid/<logs-uid>/select/logsql/(query|hits|stats_query|stats_query_range|field_names|field_values)$`. Cases:
+  - allow `/api/datasources/proxy/uid/<logs-uid>/select/logsql/query?query=_time%3A1h%20%2A%20%7C%20stats%20count%28%29`
   - allow `.../field_names?query=*` ; allow with method `GET` ; allow with headers `{}`
-  - deny `/api/datasources/proxy/uid/vm/snapshot/list` ; deny `/api/datasources/proxy/uid/vl/internal/force_flush`
-  - deny `/api/v1/provisioning/contact-points` ; deny `/api/datasources/proxy/uid/vl/select/logsql/query/../../../snapshot/list`
-  - deny `/api/datasources/proxy/uid/vl/select/logsql/%2e%2e/x` ; deny `//api/...query` ; deny path with `\`
+  - deny `/api/datasources/proxy/uid/<metrics-uid>/snapshot/list` ; deny `/api/datasources/proxy/uid/<logs-uid>/internal/force_flush`
+  - deny `/api/v1/provisioning/contact-points` ; deny `/api/datasources/proxy/uid/<logs-uid>/select/logsql/query/../../../snapshot/list`
+  - deny `/api/datasources/proxy/uid/<logs-uid>/select/logsql/%2e%2e/x` ; deny `//api/...query` ; deny path with `\`
   - deny endpoint with `#` ; deny method `POST` ; deny method `get` ; deny headers `{"X-HTTP-Method-Override":"DELETE"}`
   - deny no regex argument ; deny invalid regex `(` ; deny bad JSON ; deny endpoint not a string (`123`)
   - the deny reason starts with `grafana_api_guard:`
@@ -53,4 +53,4 @@
 - [ ] **Step 5: Commit** the hook, test, run.sh, README, spec and this plan.
 - [ ] **Step 6: Review** reviewer + security on the commit; fix FAILs, re-run once.
 - [ ] **Step 7: Install and wire** copy the hook to `~/.claude/hooks/` (cmp identical), edit the private inspector, `scripts/check_drift.sh` (hooks identical), push.
-- [ ] **Step 8: Live check** one inspector run: error counts per hostname over 24 h via the proxy route; transcript shows a `grafana_api_request` call that ran, and one deliberate disallowed call (`/api/datasources/proxy/uid/vm/snapshot/list`) refused by the guard.
+- [ ] **Step 8: Live check** one inspector run: error counts per hostname over 24 h via the proxy route; transcript shows a `grafana_api_request` call that ran, and one deliberate disallowed call (`/api/datasources/proxy/uid/<metrics-uid>/snapshot/list`) refused by the guard.

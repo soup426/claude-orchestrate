@@ -15,11 +15,13 @@ user's datasources; the regex lives in the user's private agent file.
 (b) ssh plus curl to the datasource on its host: needs a new login on the host. (c) A wrapper MCP server: far more code.
 
 **Design.** `hooks/grafana_api_guard.py <regex>`, run as `python3 -I`. It denies (PreToolUse `permissionDecision: deny`
-with a reason) unless all hold: `method` is absent, empty or `GET`; `headers` is absent or empty; `endpoint` is a string
-with no `#`; the part before `?` contains no `%`, `..`, `//` or backslash and fully matches the regex. Anything else,
-including bad input, a missing or invalid regex, or an exception, denies. The query string is not inspected: it is the
-LogsQL itself and goes only to the allowed path. Tests: `tests/test_grafana_api_guard.sh`, added to `tests/run.sh`.
+with a reason) unless all hold: `tool_input` has no key other than `endpoint`, `method`, `headers`, `jq` in exact case
+(mcp-grafana matches argument names case-insensitively, so an extra `Endpoint` would be the one sent: found by the
+security review); `method` is absent, empty or `GET`; `headers` is absent or empty; `endpoint` is a string with no
+`#`, whitespace or control character; the part before `?` contains no `%`, `..`, `//` or backslash and fully matches
+the regex. Anything else, including bad input, a missing or invalid regex, or an exception, denies. The query string
+is otherwise not inspected: it is the LogsQL itself and goes only to the allowed path. Tests: `tests/test_grafana_api_guard.sh`, added to `tests/run.sh`.
 
 **Wiring (private copy).** `inspector.md` lists the tool and adds, under `hooks: PreToolUse`, matcher
 `mcp__grafana__grafana_api_request` running the guard with
-`^/api/datasources/proxy/uid/vl/select/logsql/(query|hits|stats_query|stats_query_range|field_names|field_values)$`.
+`^/api/datasources/proxy/uid/<logs-uid>/select/logsql/(query|hits|stats_query|stats_query_range|field_names|field_values)$`.
