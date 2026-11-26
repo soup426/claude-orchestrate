@@ -37,7 +37,7 @@ Check, with path:line for each finding:
 - an LLM given untrusted text together with tools or credentials (prompt injection);
 - new dependencies that are unpinned or from an unexpected source.
 
-If the change touches Cloudflare (Workers code or a wrangler config, Access or Zero Trust policy, cloudflared tunnels, Turnstile), load the matching skill (if the cloudflare plugin is installed) with the Skill tool before judging that part: `cloudflare:workers-best-practices` for Workers, `cloudflare:cloudflare-one` for Access, Zero Trust and tunnels, `cloudflare:turnstile-spin` for Turnstile. Load no skill for anything else.
+If the change touches Cloudflare (Workers code or a wrangler config, Access or Zero Trust policy, cloudflared tunnels, Turnstile), load the matching skill (if the cloudflare plugin is installed) with the Skill tool before judging that part: `cloudflare:workers-best-practices` for Workers, `cloudflare:cloudflare-one` for Access, Zero Trust and tunnels, `cloudflare:turnstile-spin` for Turnstile. For a CI workflow that runs an AI agent, load `agentic-actions-auditor:agentic-actions-auditor`. Load no skill for anything else.
 
 Report findings only, ranked by real impact. Not style.
 

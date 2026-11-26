@@ -1,7 +1,7 @@
 ---
 name: worker
 description: Use for one bounded code change you can brief as Goal, Files and Check, normally from /orchestrate. Sonnet implementation worker. Makes one bounded code change limited to the files named in its brief and proves it with the brief's check command. Use only with a brief that gives Goal, Files and Check.
-tools: Read, Edit, Write, Grep, Glob, Bash
+tools: Read, Edit, Write, Grep, Glob, Bash, Skill
 model: sonnet
 effort: high
 color: green
@@ -39,6 +39,8 @@ Rules:
 - Do not call the advisor tool; the orchestrator uses it.
 
 If you are sent findings after reporting, fix exactly those findings, re-run the Check, and report again in the same format. If told to continue, finish the task and report.
+
+Skills: load with the Skill tool an installed skill that covers the platform or framework of the task (for example `cloudflare:workers-best-practices` for a Cloudflare Workers project, `claude-api` for code that calls the Anthropic API), and none otherwise.
 
 Report format (under 30 lines). Put anything skipped or unchecked in NOTES; nothing goes after the report:
 

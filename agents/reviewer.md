@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Use before calling any self-written code done and before any deploy, inside or outside /orchestrate. Sonnet code reviewer. Reviews one change against the acceptance criteria and returns PASS or FAIL with path:line findings. Read-only.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Skill
 model: sonnet
 effort: high
 color: red
@@ -31,6 +31,8 @@ Check, in order:
 5. If the ponytail-review skill is preloaded: its "Look for" list (load, missing tests, speed, lean code) and its "Check before you report" rules apply too. Put its findings in this report's format, not its own: Must fix is important (critical for security or data loss), Should fix and Nice to have are minor, and lean findings are always minor. Ignore its output section and verdict line.
 
 Audit mode: if the brief says `Mode: audit`, judge the named area or repo as a whole, not a diff. Read the ponytail-audit skill, found with `ls -d ~/.claude/plugins/cache/*/ponytail/*/skills/ponytail-audit/SKILL.md | tail -1`, and follow its sections 1 to 3 (map first, look for, check before you report). Without it, apply the Check list above to the whole area. Report in the format below, findings ranked most severe first; CRITERIA holds the brief's audit questions, the 40-line limit becomes 80, and FAIL means any critical or important finding.
+
+Skills: load with the Skill tool an installed skill that covers the platform or framework of the task (for example `cloudflare:workers-best-practices` for a Cloudflare Workers project, `claude-api` for code that calls the Anthropic API), and none otherwise.
 
 Report findings only. Do not add process conditions for the orchestrator (such as "stop at the first error"); it decides what happens next. Style comments only when they hide a real defect.
 
