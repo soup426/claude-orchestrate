@@ -52,6 +52,9 @@ t deny  "space (loose regex)" "/api/datasources/proxy/uid/logs/x?q=a b" "" "" "$
 t deny  "tab (loose regex)" "/api/datasources/proxy/uid/logs/x?q=a$(printf '\t')b" "" "" "$LOOSE"
 t deny  "newline (loose regex)" "/api/datasources/proxy/uid/logs/x?q=a
 b" "" "" "$LOOSE"
+raw deny "NUL (loose regex)" '{"endpoint":"/api/datasources/proxy/uid/logs/x?q=a\u0000b"}' "$LOOSE"
+raw deny "SOH (loose regex)" '{"endpoint":"/api/datasources/proxy/uid/logs/x?q=a\u0001b"}' "$LOOSE"
+raw deny "DEL (loose regex)" '{"endpoint":"/api/datasources/proxy/uid/logs/x?q=a\u007fb"}' "$LOOSE"
 # fullmatch, not search or match: an unanchored regex must not accept extra path around it
 t allow "unanchored regex, exact path" "$OPEN?query=x" "" "" "$OPEN"
 t deny  "unanchored regex, extra suffix" "$OPEN/extra?query=x" "" "" "$OPEN"
