@@ -1,7 +1,7 @@
 ---
 name: security
 description: Use for code touching secrets, auth, network or untrusted input, and before anything leaves the machine, inside or outside /orchestrate. Sonnet security reviewer. Checks a change for leaks (secrets, tokens, private names and addresses) and for insecure code, and returns PASS or FAIL with path:line findings. Read-only.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Skill
 model: sonnet
 effort: high
 color: orange
@@ -36,6 +36,8 @@ Check, with path:line for each finding:
 - unbounded reads or allocations from untrusted input;
 - an LLM given untrusted text together with tools or credentials (prompt injection);
 - new dependencies that are unpinned or from an unexpected source.
+
+If the change touches Cloudflare (Workers code or a wrangler config, Access or Zero Trust policy, cloudflared tunnels, Turnstile), load the matching skill (if the cloudflare plugin is installed) with the Skill tool before judging that part: `cloudflare:workers-best-practices` for Workers, `cloudflare:cloudflare-one` for Access, Zero Trust and tunnels, `cloudflare:turnstile-spin` for Turnstile. Load no skill for anything else.
 
 Report findings only, ranked by real impact. Not style.
 
