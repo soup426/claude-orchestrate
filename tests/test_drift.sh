@@ -23,4 +23,7 @@ H2=$W/a#b.c*; mkdir -p "$H2/.claude"; cp -r "$C"/hooks "$C"/agents "$C"/skills "
 n=$((n+1)); HOME=$H2 bash "$D" --quiet >/dev/null 2>&1 || { echo "WRONG: a home path with # and * should match literally"; fails=$((fails+1)); }
 echo '# tweak' >> "$H2/.claude/hooks/inspector_guard.py"
 n=$((n+1)); HOME=$H2 bash "$D" --quiet 2>&1 | grep -q 'hook differs: inspector_guard.py' || { echo "WRONG: under a home path with # and *, a changed hook must still be drift"; fails=$((fails+1)); }
+echo '---' > "$C/agents/stray.md"   # an installed agent the repo does not ship: sandbox_wrap.py does not wrap it
+t 0 "an installed agent with no repo copy is reported, not an error"
+n=$((n+1)); bash "$D" 2>&1 | grep -q 'agent not in repo: stray.md' || { echo "WRONG: the stray agent is not reported"; fails=$((fails+1)); }
 echo "drift cases=$n fails=$fails"; [ "$fails" -eq 0 ]

@@ -22,6 +22,9 @@ if [ "$quiet" = 0 ]; then
     n=$(basename "$f"); i=$claude/agents/$n
     if [ ! -f "$i" ]; then echo "agent missing: $n"; elif ! cmp -s <(norm "$i") <(norm "$f"); then echo "agent differs: $n"; fi
   done
+  for i in "$claude"/agents/*.md; do   # sandbox_wrap.py wraps only the roles it names, so a stray copy runs Bash unsandboxed
+    [ -f "$i" ] && [ ! -f "$here/agents/$(basename "$i")" ] && echo "agent not in repo: $(basename "$i") (its Bash is not sandboxed unless hooks/sandbox_wrap.py names it)"
+  done
   for f in "$here"/skills/*/*.md; do
     n=$(basename "$(dirname "$f")")/$(basename "$f"); i=$claude/skills/$n
     if [ ! -f "$i" ]; then echo "skill missing: $n"; elif ! cmp -s <(norm "$i") <(norm "$f"); then echo "skill differs: $n"; fi

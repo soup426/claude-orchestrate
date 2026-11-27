@@ -97,7 +97,13 @@ ok "inspector: sockets visible" "$(run inspector "ls -A $socks")" master-socket
 probe="ssh -O check atlas && ssh -o BatchMode=yes atlas 'cat /etc/hostname'"
 hasnt "verifier probe: sockets visible" "$(wrapped verifier "$probe")" "--tmpfs $socks"
 has "verifier script: sockets hidden" "$(wrapped verifier "python3 deploy_check.py")" "--tmpfs $socks"
-has "verifier write over ssh: sockets hidden" "$(wrapped verifier "ssh atlas 'rm -rf /srv/x'")" "--tmpfs $socks"
+# A verifier command that runs ssh but is no probe would only die on "Bad owner or permissions": refuse it with the reason.
+out=$(hook verifier "ssh atlas 'rm -rf /srv/x'")
+ok "verifier ssh that is no probe is denied" "$(jq -r .hookSpecificOutput.permissionDecision <<<"$out")" deny
+has "verifier ssh deny gives the probe's reason" "$(jq -r .hookSpecificOutput.permissionDecisionReason <<<"$out")" "ssh -O check atlas"
+ok "verifier ssh after a pipe is denied" "$(hook verifier "echo x | ssh atlas 'cat'" | jq -r .hookSpecificOutput.permissionDecision)" deny
+ok "verifier: a command that only mentions ssh still runs" "$(hook verifier "grep -c ssh /nonexistent > /tmp/o" | jq -r .hookSpecificOutput.permissionDecision)" allow
+ok "verifier: an ssh word inside quotes still runs" "$(hook verifier "echo 'x; ssh atlas' > /tmp/o" | jq -r .hookSpecificOutput.permissionDecision)" allow
 
 # 7. The inspector is still checked whole by inspector_guard.py before anything runs.
 out=$(hook inspector "ssh atlas 'systemctl restart nginx'")

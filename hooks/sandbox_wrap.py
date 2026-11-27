@@ -35,6 +35,15 @@ def read_only_probe(cmd):
     return r.returncode == 0, (r.stdout + r.stderr).strip()[:300]
 
 
+def runs_ssh(cmd):
+    """True when ssh is a command word: first, or right after ; & | ( ). Mentions (grep ssh, quoted text) are not."""
+    try:
+        toks = list(shlex.shlex(cmd, posix=True, punctuation_chars=True))
+    except ValueError:
+        return False   # unbalanced quotes: the sandbox still runs it, just without this hint
+    return any(t == "ssh" and (i == 0 or set(toks[i - 1]) <= set(";&|()")) for i, t in enumerate(toks))
+
+
 def socket_dir():
     """Directory holding ssh ControlMaster sockets, or None. Hidden from every role that may not ssh."""
     d = os.environ.get("ORCHESTRATE_SSH_SOCKET_DIR")
@@ -128,7 +137,11 @@ def main():
             if not ssh_ok:
                 out("deny", f"sandbox_wrap (inspector): not a read-only probe: {why}")
         elif role == "verifier" and re.search(r"(^|[^\w.-])ssh([^\w-]|$)", cmd):
-            ssh_ok, _ = read_only_probe(cmd)   # anything else still runs, but with the master sockets hidden
+            ssh_ok, why = read_only_probe(cmd)   # anything else still runs, but with the master sockets hidden
+            if not ssh_ok and runs_ssh(cmd):   # it would only die on "Bad owner or permissions": say why instead
+                out("deny", f"sandbox_wrap (verifier): this ssh cannot run here: {why}. ssh works only as a read-only"
+                    " probe chained after `ssh -O check <host> &&`; a script that runs ssh itself cannot run in this"
+                    " sandbox, so put it under NOT JUDGED with the exact command for the main session to run.")
         b = ["bwrap", "--die-with-parent", "--new-session", "--unshare-pid"]
         if not NET[role]:
             b.append("--unshare-net")
