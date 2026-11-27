@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Report-format gate for the orchestrate agents: frontmatter PreToolUse hook on SubagentHandback, role as $1.
-# Refuses a hand-back whose report lacks the role's required first field, so the agent re-sends it in format.
+# Refuses a hand-back whose report lacks a line the role requires (its first field, plus SEARCHES: for the researcher), so the agent re-sends it in format.
 # Hard limit: at most ONE refusal per agent (keyed on agent_id); any later hand-back always passes, so a bug here
 # can never lock an agent out of reporting (an early test showed an always-deny loop of 8 attempts).
 role=${1:-worker}
