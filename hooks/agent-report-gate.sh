@@ -14,7 +14,7 @@ find "$state" -maxdepth 1 -name 'gate-refused-*' -mtime +0 -delete 2>/dev/null
 msg=$(printf '%s' "$in" | jq -r '.tool_input.message // empty')
 case "$role" in
   worker) want='STATUS: (DONE|BLOCKED|FAILED)'; fmt='STATUS: DONE | BLOCKED | FAILED, then CHANGED, CHECK, NOTES' ;;
-  researcher) want='ANSWER:'; fmt='ANSWER:, then FACTS, VERSIONS, FAILURE MODES, UNVERIFIED' ;;
+  researcher) want='ANSWER:'; fmt='ANSWER:, then per question Takeaway, Cited, Inferred, Gaps, then VERSIONS, FAILURE MODES' ;;
   inspector) want='FACTS:'; fmt='FACTS:, then NOT WARM, COULD NOT CHECK' ;;
   *)      want='VERDICT: (PASS|FAIL)';          fmt='VERDICT: PASS | FAIL, then the rest of your format' ;;
 esac
