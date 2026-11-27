@@ -12,15 +12,20 @@ mark=$state/gate-refused-$id
 find "$state" -maxdepth 1 -name 'gate-refused-*' -mtime +0 -delete 2>/dev/null
 [ -e "$mark" ] && exit 0
 msg=$(printf '%s' "$in" | jq -r '.tool_input.message // empty')
+also=''   # a second line the report must have, for roles whose prompt alone did not keep it in (researcher)
 case "$role" in
   worker) want='STATUS: (DONE|BLOCKED|FAILED)'; fmt='STATUS: DONE | BLOCKED | FAILED, then CHANGED, CHECK, NOTES' ;;
-  researcher) want='ANSWER:'; fmt='ANSWER:, then per question Takeaway, Cited, Inferred, Gaps, then VERSIONS, FAILURE MODES' ;;
+  researcher) want='ANSWER:'; also='SEARCHES:'; fmt='ANSWER:, then per question Takeaway, Cited, Inferred, Gaps, then VERSIONS, FAILURE MODES, SEARCHES' ;;
   inspector) want='FACTS:'; fmt='FACTS:, then NOT WARM, COULD NOT CHECK' ;;
   *)      want='VERDICT: (PASS|FAIL)';          fmt='VERDICT: PASS | FAIL, then the rest of your format' ;;
 esac
-if ! printf '%s' "$msg" | command grep -qE "^[[:space:]]*(\*\*)?${want}"; then
+has() { printf '%s' "$msg" | command grep -qE "^[[:space:]]*(\*\*)?$1"; }
+miss=''
+has "$want" || miss=${want//|/ or }
+[ -n "$also" ] && ! has "$also" && miss="${miss:+$miss and }$also"
+if [ -n "$miss" ]; then
   mkdir -p "${mark%/*}" 2>/dev/null && : > "$mark" 2>/dev/null || exit 0   # no marker, no refusal: never lock an agent out
-  jq -n --arg r "agent-report-gate ($role): your report has no line starting with ${want//|/ or }. Re-send the whole report once in your file's format, starting with ${fmt}. This is the only refusal; the next hand-back is always delivered." \
+  jq -n --arg r "agent-report-gate ($role): your report has no line starting with ${miss}. Re-send the whole report once in your file's format, starting with ${fmt}. This is the only refusal; the next hand-back is always delivered." \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 fi
 exit 0

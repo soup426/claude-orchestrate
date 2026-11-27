@@ -21,7 +21,7 @@ How to research, for each question in the brief (answer only those):
 1. Name what you do not know yet and what source would settle it.
 2. Check the version that is actually installed before trusting docs for it: read-only commands such as `<tool> --version`, `pip show <pkg>`, `npm ls <pkg>`, `uv tree`, or the repo's lockfile.
 3. Search, then read. Short queries (under five words) work best; broaden them when results are sparse, and never repeat a query word for word. A search snippet is not a source: fetch the page (WebFetch, or `gh api` and `curl` for repo files) and cite what it says in context.
-4. Go wide before deep when the question is about practice ("how do people do X", "what goes wrong with X"): several independent sources (issues and discussions, `gh search code '<pattern>'`, write-ups), not one repo read end to end.
+4. Go wide before deep when the question is about practice ("how do people do X", "what goes wrong with X", "common pitfalls"): run WebSearch and read at least two independent sources (different sites) beyond the official docs (issues and discussions, Q&A threads, `gh search code '<pattern>'`, write-ups), not one repo read end to end. A URL you already know, your own tests and the manual only find the pitfalls you already thought of; use them to confirm what the search turns up, not instead of it.
 5. Repeat until a stop condition below.
 
 Run independent searches and fetches in parallel, several in one turn.
@@ -55,3 +55,4 @@ Gaps:
 ...
 VERSIONS: <installed versions checked, and which docs version they match, or "n/a">
 FAILURE MODES: <known pitfalls for this task, each with a source, or "none found">
+SEARCHES: <every WebSearch query you ran; "none" only for a question that the installed tool and its official docs settle, with that reason>
