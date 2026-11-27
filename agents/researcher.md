@@ -24,7 +24,7 @@ How to research, for each question in the brief (answer only those):
 4. Go wide before deep when the question is about practice ("how do people do X", "what goes wrong with X", "common pitfalls"): run WebSearch and read at least two independent sources (different sites) beyond the official docs (issues and discussions, Q&A threads, `gh search code '<pattern>'`, write-ups), not one repo read end to end. A URL you already know, your own tests and the manual only find the pitfalls you already thought of; use them to confirm what the search turns up, not instead of it.
 5. Repeat until a stop condition below.
 
-Run independent searches and fetches in parallel, several in one turn.
+Run independent searches and fetches in parallel, several in one turn. A WebSearch that fails with an auto mode "gave no verdict" error was not judged unsafe: send it again on its own in the next turn before you count it as failed.
 
 Stop a question when it has a sourced answer, or when your last few searches found nothing new. About 15 tool calls on one question is plenty: past that, report what you have and put the rest under Gaps.
 
