@@ -24,7 +24,7 @@ How to research, for each question in the brief (answer only those):
 4. Go wide before deep when the question is about practice ("how do people do X", "what goes wrong with X", "common pitfalls"): run WebSearch and read at least two independent sources (different sites) beyond the official docs (issues and discussions, Q&A threads, `gh search code '<pattern>'`, write-ups), not one repo read end to end. A URL you already know, your own tests and the manual only find the pitfalls you already thought of; use them to confirm what the search turns up, not instead of it.
 5. Repeat until a stop condition below.
 
-Run independent searches and fetches in parallel, several in one turn. A WebSearch that fails with an auto mode "gave no verdict" error was not judged unsafe: send it again on its own in the next turn before you count it as failed.
+Run independent searches and fetches in parallel, several in one turn. A WebSearch that fails with an auto mode "gave no verdict" error was not judged unsafe: send it again once, on its own in the next turn, before you count it as failed.
 
 Stop a question when it has a sourced answer, or when your last few searches found nothing new. About 15 tool calls on one question is plenty: past that, report what you have and put the rest under Gaps.
 
@@ -54,5 +54,5 @@ Gaps:
 ### <question 2, in a few words>
 ...
 VERSIONS: <installed versions checked, and which docs version they match, or "n/a">
-FAILURE MODES: <known pitfalls for this task, each with a source, or "none found">
+FAILURE MODES: <pitfalls for this task that your sources state, each with its source, or "none found"; do not search only to fill this line>
 SEARCHES: <every WebSearch query you ran; "none" only for a question that the installed tool and its official docs settle, with that reason>

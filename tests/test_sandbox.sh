@@ -101,6 +101,7 @@ has "verifier script: sockets hidden" "$(wrapped verifier "python3 deploy_check.
 out=$(hook verifier "ssh atlas 'rm -rf /srv/x'")
 ok "verifier ssh that is no probe is denied" "$(jq -r .hookSpecificOutput.permissionDecision <<<"$out")" deny
 has "verifier ssh deny gives the probe's reason" "$(jq -r .hookSpecificOutput.permissionDecisionReason <<<"$out")" "ssh -O check atlas"
+has "verifier: ssh the hook cannot see still runs with sockets hidden" "$(wrapped verifier "bash -c 'ssh atlas rm x'")" "--tmpfs $socks"
 ok "verifier ssh after a pipe is denied" "$(hook verifier "echo x | ssh atlas 'cat'" | jq -r .hookSpecificOutput.permissionDecision)" deny
 ok "verifier: a command that only mentions ssh still runs" "$(hook verifier "grep -c ssh /nonexistent > /tmp/o" | jq -r .hookSpecificOutput.permissionDecision)" allow
 ok "verifier: an ssh word inside quotes still runs" "$(hook verifier "echo 'x; ssh atlas' > /tmp/o" | jq -r .hookSpecificOutput.permissionDecision)" allow

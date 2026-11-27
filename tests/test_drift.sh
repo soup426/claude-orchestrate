@@ -26,4 +26,6 @@ n=$((n+1)); HOME=$H2 bash "$D" --quiet 2>&1 | grep -q 'hook differs: inspector_g
 echo '---' > "$C/agents/stray.md"   # an installed agent the repo does not ship: sandbox_wrap.py does not wrap it
 t 0 "an installed agent with no repo copy is reported, not an error"
 n=$((n+1)); bash "$D" 2>&1 | grep -q 'agent not in repo: stray.md' || { echo "WRONG: the stray agent is not reported"; fails=$((fails+1)); }
+t 0 "a stray agent is not an error under --quiet either" --quiet
+n=$((n+1)); bash "$D" --quiet 2>&1 | grep -q 'agent not in repo: stray.md' || { echo "WRONG: --quiet (the SessionStart caller) must still report a stray agent"; fails=$((fails+1)); }
 echo "drift cases=$n fails=$fails"; [ "$fails" -eq 0 ]
