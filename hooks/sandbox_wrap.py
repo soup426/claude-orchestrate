@@ -2,7 +2,7 @@
 """PreToolUse hook for Bash, Read, Grep and Glob: run the read-only agents' commands inside a bubblewrap sandbox and
 the memory cap, and keep credential files (HIDDEN plus ~/.config/orchestrate/hidden-paths) from them in both.
 
-For the reviewer, security, researcher, inspector and verifier agents it returns "allow" with the command rewritten
+For the reviewer, security, researcher, inspector, verifier and Explore agents it returns "allow" with the command rewritten
 to run under systemd-run (the cap) and bwrap: the whole disk read-only, a private /tmp, no user bus, docker socket or
 ssh agent, no network unless the role needs it, and only this session's scratch directory writable. Read-only then
 holds in the kernel for whatever the command starts, so nothing here reads the command text to guess at writes.
@@ -58,9 +58,18 @@ def hidden_paths():
 
 
 def check_file_tool(tool, ti, cwd):
-    """Read, Grep, Glob: deny a path in a hidden one, and for Grep and Glob a search root that holds one."""
-    p = os.path.realpath(os.path.join(cwd, os.path.expanduser(ti.get("file_path") or ti.get("path") or ".")))
-    for h in hidden_paths():
+    """Read, Grep, Glob: deny a path in a hidden one, and for Grep and Glob a search root that holds one.
+    These tools run in Claude Code's own process, outside bwrap, so what bwrap masks is refused here as well: keys in
+    ~/.ssh and ~/.gnupg, and /proc (another process's environ holds the environment the sandbox strips).
+    shortcut: a hard link to a hidden file, or a symlink swapped after this check, is not caught; the read-only roles
+    cannot create either, so upgrade if a role ever gets write access outside its scratchpad."""
+    root = ti.get("file_path") or ti.get("path")
+    pat = ti.get("pattern") or ""
+    if tool == "Glob" and not root and os.path.isabs(os.path.expanduser(pat)):   # the pattern carries the root
+        root = re.split(r"[*?\[{]", os.path.expanduser(pat), maxsplit=1)[0] or "/"
+    p = os.path.realpath(os.path.join(cwd, os.path.expanduser(root or ".")))
+    home = os.path.expanduser("~")
+    for h in hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]:
         if p == h or p.startswith(h + "/") or (tool != "Read" and h.startswith(p.rstrip("/") + "/")):
             out("deny", f"sandbox_wrap: {tool} of {p} is refused: credential files are hidden from subagents")
     sys.exit(0)

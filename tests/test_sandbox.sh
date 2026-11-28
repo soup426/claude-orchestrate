@@ -100,6 +100,14 @@ ok "researcher: Glob inside a hidden dir is denied" "$(tool researcher Glob "{\"
 ok "researcher: Read of an ordinary file passes" "$(tool researcher Read "{\"file_path\":\"$F/plain\"}")" none
 ok "researcher: Grep with no path (cwd /tmp) passes" "$(tool researcher Grep '{"pattern":"x"}')" none
 ok "main session: Read of a credential file is untouched" "$(tool "" Read "{\"file_path\":\"$F/.git-credentials\"}")" none
+mkdir -p "$F/.gnupg"; : > "$F/.gnupg/pubring.kbx"   # the Read tool runs outside bwrap, so what bwrap masks must be refused here too
+ok "researcher: Read of an ssh key is denied" "$(tool researcher Read "{\"file_path\":\"$F/.ssh/id_test\"}")" deny
+ok "inspector: Read of an ssh key is denied" "$(tool inspector Read "{\"file_path\":\"$F/.ssh/id_test\"}")" deny
+ok "researcher: Read of ~/.gnupg is denied" "$(tool researcher Read "{\"file_path\":\"$F/.gnupg/pubring.kbx\"}")" deny
+ok "researcher: Read under /proc (the parent's environment) is denied" "$(tool researcher Read '{"file_path":"/proc/1/environ"}')" deny
+ok "researcher: Glob with an absolute pattern into a hidden dir is denied" "$(tool researcher Glob "{\"pattern\":\"$F/.aws/*\"}")" deny
+ok "researcher: Glob with an absolute pattern over the home is denied" "$(tool researcher Glob "{\"pattern\":\"$F/*/credentials\"}")" deny
+ok "researcher: Glob with an absolute pattern elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"$F/pla*\"}")" none
 ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
 printf 'relative/path\n' > "$F/.config/orchestrate/hidden-paths"
 ok "a hidden-paths line that is not ~/ or absolute denies" "$(HOME=$F hook reviewer "true" | jq -r .hookSpecificOutput.permissionDecision)" deny

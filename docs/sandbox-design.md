@@ -1,6 +1,6 @@
 # Design: run subagent Bash commands in a bubblewrap sandbox
 
-Status: built for the five read-only roles (`hooks/sandbox_wrap.py`, `tests/test_sandbox.sh`); the worker is not
+Status: built for the five read-only roles and Explore, with credential files hidden (HIDDEN and ~/.config/orchestrate/hidden-paths, also refused to Read, Grep and Glob) (`hooks/sandbox_wrap.py`, `tests/test_sandbox.sh`); the worker is not
 sandboxed. See "What was built" at the end for where the build differs from this proposal. Written 2026-11-24 after an independent critique found that the Bash guard infers writes,
 runners and network use from command text: about 9 of 83 refusals in five real sessions were clearly right, and one
 verifier got past the guard with a rewritten import. Every new allowance has cost 2 to 4 security review rounds.
