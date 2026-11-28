@@ -113,16 +113,21 @@ ok "researcher: a wildcard high up (/ho*) is cut at the last slash" "$(tool rese
 mkdir -p "$F/sub"
 ok "researcher: a relative Glob pattern with .. is judged from its path" "$(tool researcher Glob "{\"pattern\":\"../.gnupg/*\",\"path\":\"$F/sub\"}")" deny
 ok "researcher: /proc/self/cwd is refused before it resolves" "$(tool researcher Read '{"file_path":"/proc/self/cwd/plain"}')" deny
-ok "researcher: an absolute Glob pattern from cwd = home is judged by the pattern alone" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}" "$F")" none
+# Absolute Glob patterns are refused outright: the tool cuts its own search root out of them (dirname, wildcards,
+# trailing slashes), and five rounds of modelling that each missed a case. A relative pattern plus path is judged whole.
+ok "researcher: an absolute Glob pattern is refused, even in a project dir" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}" "$F")" deny
+ok "researcher: an absolute literal with a trailing slash is refused" "$(tool researcher Glob "{\"pattern\":\"$F/id_test/\"}" "$F/sub")" deny
+ok "researcher: a ~ pattern is absolute, so refused" "$(tool researcher Glob '{"pattern":"~/sub/*"}' "$F/sub")" deny
+ok "researcher: the same search as a relative pattern with path passes" "$(tool researcher Glob "{\"pattern\":\"pla*\",\"path\":\"$F/sub\"}" "$F")" none
 ok "researcher: a relative Glob is judged by the whole tree it searches (cwd = home)" "$(tool researcher Glob '{"pattern":"sub/*"}' "$F")" deny
 ok "researcher: a slashless name matches at any depth, so it is judged from cwd" "$(tool researcher Glob '{"pattern":"id_test"}' "$F")" deny
 ok "researcher: a slashless name from a project dir passes" "$(tool researcher Glob '{"pattern":"id_test"}' "$F/sub")" none
 ok "researcher: an absolute pattern with no wildcard searches its dir at any depth" "$(tool researcher Glob "{\"pattern\":\"$F/id_test\"}")" deny
-ok "researcher: an absolute literal pattern in a project dir passes" "$(tool researcher Glob "{\"pattern\":\"$F/sub/README.md\"}")" none
+ok "researcher: an absolute literal pattern in a project dir is refused too" "$(tool researcher Glob "{\"pattern\":\"$F/sub/README.md\"}")" deny
 ok "researcher: .. after a wildcard is refused" "$(tool researcher Glob '{"pattern":"*/../.ssh/*"}' "$F/sub")" deny
 ok "researcher: .. inside braces is refused" "$(tool researcher Glob '{"pattern":"{../.ssh,x}/*"}' "$F/sub")" deny
 ok "researcher: a relative Glob in a project passes" "$(tool researcher Glob "{\"pattern\":\"**/*.py\",\"path\":\"$F/sub\"}")" none
-ok "researcher: Glob with an absolute pattern elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}")" none
+ok "researcher: a relative pattern with path elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"pla*\",\"path\":\"$F/sub\"}")" none
 ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
 printf 'relative/path\n' > "$F/.config/orchestrate/hidden-paths"
 ok "a hidden-paths line that is not ~/ or absolute denies" "$(HOME=$F hook reviewer "true" | jq -r .hookSpecificOutput.permissionDecision)" deny
