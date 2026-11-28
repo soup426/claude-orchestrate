@@ -24,7 +24,7 @@ ok() { n=$((n+1)); if [ "$2" = "$3" ]; then :; else fails=$((fails+1)); echo "WR
 has() { n=$((n+1)); case $2 in *"$3"*) ;; *) fails=$((fails+1)); echo "WRONG $1: [$3] not in [${2:0:300}]";; esac; }
 hasnt() { n=$((n+1)); case $2 in *"$3"*) fails=$((fails+1)); echo "WRONG $1: [$3] found";; esac; }
 
-# 1. Who is wrapped: only the five read-only roles. The main session, the worker and unknown agents pass untouched.
+# 1. Who is wrapped: only the five read-only roles and Explore. The main session, the worker and unknown agents pass untouched.
 ok "main session untouched" "$(hook "" "echo hi")" ""
 ok "worker untouched" "$(hook worker "echo hi")" ""
 ok "unknown agent untouched" "$(hook general-purpose "echo hi")" ""
@@ -107,7 +107,14 @@ ok "researcher: Read of ~/.gnupg is denied" "$(tool researcher Read "{\"file_pat
 ok "researcher: Read under /proc (the parent's environment) is denied" "$(tool researcher Read '{"file_path":"/proc/1/environ"}')" deny
 ok "researcher: Glob with an absolute pattern into a hidden dir is denied" "$(tool researcher Glob "{\"pattern\":\"$F/.aws/*\"}")" deny
 ok "researcher: Glob with an absolute pattern over the home is denied" "$(tool researcher Glob "{\"pattern\":\"$F/*/credentials\"}")" deny
-ok "researcher: Glob with an absolute pattern elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"$F/pla*\"}")" none
+ok "researcher: an absolute Glob pattern overrides path, so it is judged too" "$(tool researcher Glob "{\"pattern\":\"$F/.ssh/*\",\"path\":\"/tmp\"}")" deny
+ok "researcher: a wildcard inside a segment (.ss*) is cut at the last slash" "$(tool researcher Glob "{\"pattern\":\"$F/.ss*/*\"}")" deny
+ok "researcher: a wildcard high up (/ho*) is cut at the last slash" "$(tool researcher Glob '{"pattern":"/ho*/x/.ssh/*"}')" deny
+mkdir -p "$F/sub"
+ok "researcher: a relative Glob pattern with .. is judged from its path" "$(tool researcher Glob "{\"pattern\":\"../.gnupg/*\",\"path\":\"$F/sub\"}")" deny
+ok "researcher: /proc/self/cwd is refused before it resolves" "$(tool researcher Read '{"file_path":"/proc/self/cwd/plain"}')" deny
+ok "researcher: a relative Glob in a project passes" "$(tool researcher Glob "{\"pattern\":\"**/*.py\",\"path\":\"$F/sub\"}")" none
+ok "researcher: Glob with an absolute pattern elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}")" none
 ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
 printf 'relative/path\n' > "$F/.config/orchestrate/hidden-paths"
 ok "a hidden-paths line that is not ~/ or absolute denies" "$(HOME=$F hook reviewer "true" | jq -r .hookSpecificOutput.permissionDecision)" deny

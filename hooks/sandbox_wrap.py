@@ -61,17 +61,25 @@ def check_file_tool(tool, ti, cwd):
     """Read, Grep, Glob: deny a path in a hidden one, and for Grep and Glob a search root that holds one.
     These tools run in Claude Code's own process, outside bwrap, so what bwrap masks is refused here as well: keys in
     ~/.ssh and ~/.gnupg, and /proc (another process's environ holds the environment the sandbox strips).
-    shortcut: a hard link to a hidden file, or a symlink swapped after this check, is not caught; the read-only roles
-    cannot create either, so upgrade if a role ever gets write access outside its scratchpad."""
-    root = ti.get("file_path") or ti.get("path")
-    pat = ti.get("pattern") or ""
-    if tool == "Glob" and not root and os.path.isabs(os.path.expanduser(pat)):   # the pattern carries the root
-        root = re.split(r"[*?\[{]", os.path.expanduser(pat), maxsplit=1)[0] or "/"
-    p = os.path.realpath(os.path.join(cwd, os.path.expanduser(root or ".")))
+    shortcut: a symlink in the scratchpad (which these roles can write) swapped to a hidden file after this check is
+    not caught; upgrade by denying paths that cross a symlink under /tmp/claude-<uid> if that race ever matters.
+    Hard links cannot reach a hidden file: the scratchpad is another mount (EXDEV)."""
+    base = os.path.join(cwd, os.path.expanduser(ti.get("file_path") or ti.get("path") or "."))
+    roots = [base]
+    if tool == "Glob" and ti.get("pattern"):
+        # As the tool does: an absolute pattern replaces path, and the search root is the part before the last "/"
+        # ahead of the first wildcard (so ".ss*/x" searches the dir that holds .ssh).
+        full = os.path.join(base, os.path.expanduser(ti["pattern"]))
+        lit = re.split(r"[*?\[{]", full, maxsplit=1)[0]
+        roots.append(lit if lit == full else (lit.rsplit("/", 1)[0] or "/"))
     home = os.path.expanduser("~")
-    for h in hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]:
-        if p == h or p.startswith(h + "/") or (tool != "Read" and h.startswith(p.rstrip("/") + "/")):
-            out("deny", f"sandbox_wrap: {tool} of {p} is refused: credential files are hidden from subagents")
+    deny = hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]
+    for r in roots:
+        n = os.path.normpath(r)   # /proc/self/... would resolve in this hook's process, not Claude Code's
+        p = "/proc" if n == "/proc" or n.startswith("/proc/") else os.path.realpath(r)
+        for h in deny:
+            if p == h or p.startswith(h + "/") or (tool != "Read" and h.startswith(p.rstrip("/") + "/")):
+                out("deny", f"sandbox_wrap: {tool} of {p} is refused: credential files are hidden from subagents")
     sys.exit(0)
 
 

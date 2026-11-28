@@ -16,6 +16,8 @@ jobs:
           persist-credentials: false
       - name: Ensure jq
         run: command -v jq >/dev/null || sudo apt-get install -y jq
+      - name: Ensure bubblewrap
+        run: command -v bwrap >/dev/null || sudo apt-get install -y bubblewrap
       - name: Run tests
         env:
           REQUIRE_SANDBOX: "1"   # the sandbox suite must run here, not print SKIP
