@@ -75,7 +75,7 @@ def check_file_tool(tool, ti, cwd):
             # modelling that missed a case five times, so subagents give the directory as path instead. Forms the
             # tool may also read as absolute (a backslash, a drive letter, leading space, an absolute brace
             # alternative) are refused the same way.
-            out("deny", "sandbox_wrap: an absolute Glob pattern is refused for subagents; pass the directory as path"
+            out("deny", "sandbox_wrap: an absolute or ambiguous Glob pattern is refused for subagents; pass the directory as path"
                 " and a relative pattern")
         # A relative pattern keeps roots (path, or cwd): rg matches a slashless glob at any depth, so the whole tree under
         # path or cwd is what it can list, and without .. it cannot leave that tree.
