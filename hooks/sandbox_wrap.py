@@ -67,11 +67,14 @@ def check_file_tool(tool, ti, cwd):
     base = os.path.join(cwd, os.path.expanduser(ti.get("file_path") or ti.get("path") or "."))
     roots = [base]
     if tool == "Glob" and ti.get("pattern"):
+        pat = os.path.expanduser(ti["pattern"])
+        if re.search(r"(^|[/{,])\.\.($|[/},])", pat):   # .. after a wildcard or in braces would escape the root below
+            out("deny", "sandbox_wrap: a Glob pattern with a .. segment is refused for subagents; pass path instead")
         # As the tool does: an absolute pattern replaces path, and the search root is the part before the last "/"
-        # ahead of the first wildcard (so ".ss*/x" searches the dir that holds .ssh).
-        full = os.path.join(base, os.path.expanduser(ti["pattern"]))
+        # ahead of the first wildcard (so ".ss*/x" searches the dir that holds .ssh). That root is all Glob reads.
+        full = os.path.join(base, pat)
         lit = re.split(r"[*?\[{]", full, maxsplit=1)[0]
-        roots.append(lit if lit == full else (lit.rsplit("/", 1)[0] or "/"))
+        roots = [lit if lit == full else (lit.rsplit("/", 1)[0] or "/")]
     home = os.path.expanduser("~")
     deny = hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]
     for r in roots:

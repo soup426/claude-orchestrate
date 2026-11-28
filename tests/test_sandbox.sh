@@ -87,9 +87,9 @@ done
 hasnt "inspector: credential file does not read" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "cat $F/.git-credentials" 2>&1)" tok
 ok "researcher: other files stay readable" "$(HOME=$F run researcher "cat $F/plain")" ok
 # The same paths through the Read, Grep and Glob tools, which no bwrap covers.
-tool() {   # $1 role ("" = main session), $2 tool name, $3 tool_input JSON -> permissionDecision or "none"
-  jq -n --arg r "$1" --arg t "$2" --argjson i "$3" --arg s "$sid" --arg p "$HOME/.claude/projects/$proj/$sid.jsonl" \
-    '{session_id:$s, transcript_path:$p, cwd:"/tmp", tool_name:$t, tool_input:$i} + (if $r=="" then {} else {agent_id:"a1", agent_type:$r} end)' \
+tool() {   # $1 role ("" = main session), $2 tool name, $3 tool_input JSON, [$4 cwd] -> permissionDecision or "none"
+  jq -n --arg r "$1" --arg t "$2" --argjson i "$3" --arg c "${4:-/tmp}" --arg s "$sid" --arg p "$HOME/.claude/projects/$proj/$sid.jsonl" \
+    '{session_id:$s, transcript_path:$p, cwd:$c, tool_name:$t, tool_input:$i} + (if $r=="" then {} else {agent_id:"a1", agent_type:$r} end)' \
     | HOME=$F python3 -I "$H" | jq -rs '.[0].hookSpecificOutput.permissionDecision // "none"'
 }
 ok "researcher: Read of a credential file is denied" "$(tool researcher Read "{\"file_path\":\"$F/.git-credentials\"}")" deny
@@ -113,6 +113,10 @@ ok "researcher: a wildcard high up (/ho*) is cut at the last slash" "$(tool rese
 mkdir -p "$F/sub"
 ok "researcher: a relative Glob pattern with .. is judged from its path" "$(tool researcher Glob "{\"pattern\":\"../.gnupg/*\",\"path\":\"$F/sub\"}")" deny
 ok "researcher: /proc/self/cwd is refused before it resolves" "$(tool researcher Read '{"file_path":"/proc/self/cwd/plain"}')" deny
+ok "researcher: an absolute Glob pattern from cwd = home is judged by the pattern alone" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}" "$F")" none
+ok "researcher: a relative Glob under a project dir from cwd = home passes" "$(tool researcher Glob '{"pattern":"sub/*"}' "$F")" none
+ok "researcher: .. after a wildcard is refused" "$(tool researcher Glob '{"pattern":"*/../.ssh/*"}' "$F/sub")" deny
+ok "researcher: .. inside braces is refused" "$(tool researcher Glob '{"pattern":"{../.ssh,x}/*"}' "$F/sub")" deny
 ok "researcher: a relative Glob in a project passes" "$(tool researcher Glob "{\"pattern\":\"**/*.py\",\"path\":\"$F/sub\"}")" none
 ok "researcher: Glob with an absolute pattern elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}")" none
 ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
