@@ -17,4 +17,6 @@ jobs:
       - name: Ensure jq
         run: command -v jq >/dev/null || sudo apt-get install -y jq
       - name: Run tests
+        env:
+          REQUIRE_SANDBOX: "1"   # the sandbox suite must run here, not print SKIP
         run: bash tests/run.sh

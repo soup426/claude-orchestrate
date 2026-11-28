@@ -21,6 +21,8 @@ systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p 
     -- bash -c '<original command>'
 ```
 
+The table is the original proposal; "What was built" below is what shipped (the worker is not sandboxed, and the researcher, inspector and verifier share the host network).
+
 | Role | Writable | Network |
 |---|---|---|
 | worker | its repo, its scratchpad | off by default; on when the brief says so (package installs) |

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Tests for hooks/sandbox_wrap.py. They run the rewritten commands for real, so "read-only" is checked in the kernel,
 # not by reading the wrapper's text. Usage: bash tests/test_sandbox.sh [path/to/sandbox_wrap.py]
-# Needs bubblewrap with user namespaces; without it the suite prints SKIP and passes (CI runners often lack it).
+# Needs bubblewrap with user namespaces; without it the suite prints SKIP and passes (CI sets REQUIRE_SANDBOX=1, which turns the skip into a failure).
 H=${1:-$(cd "$(dirname "$0")/.." && pwd)/hooks/sandbox_wrap.py}
 command -v jq >/dev/null || { echo "jq required"; exit 2; }
-bwrap --ro-bind / / true 2>/dev/null || { echo "sandbox: SKIP (bubblewrap cannot create a sandbox here)"; exit 0; }
+bwrap --ro-bind / / true 2>/dev/null || { echo "sandbox: SKIP (bubblewrap cannot create a sandbox here)"; [ -z "${REQUIRE_SANDBOX:-}" ]; exit; }   # CI sets REQUIRE_SANDBOX=1: a skip there is a failure
 systemd-run --user --scope --quiet true 2>/dev/null || export ORCHESTRATE_SANDBOX_NO_CAP=1   # no user session: test the sandbox without the cap
 fails=0; n=0
 uid=$(id -u); proj=sandbox-test-$$; sid=11111111-2222-3333-4444-555555555555
@@ -28,6 +28,7 @@ hasnt() { n=$((n+1)); case $2 in *"$3"*) fails=$((fails+1)); echo "WRONG $1: [$3
 ok "main session untouched" "$(hook "" "echo hi")" ""
 ok "worker untouched" "$(hook worker "echo hi")" ""
 ok "unknown agent untouched" "$(hook general-purpose "echo hi")" ""
+ok "Explore is wrapped (read-only search agent)" "$(hook Explore "echo hi" | jq -r .hookSpecificOutput.permissionDecision)" allow
 for r in reviewer security researcher inspector verifier; do
   out=$(hook "$r" "echo hi")
   ok "$r decision" "$(jq -r .hookSpecificOutput.permissionDecision <<<"$out")" allow
@@ -56,7 +57,7 @@ run reviewer "exit 3" >/dev/null; ok "exit code" "$?" 3
 
 # 4. Network: off for reviewer and security; shared for researcher, verifier and inspector (its allow-list has curl GET and nc -z).
 host_net=$(readlink /proc/self/ns/net)
-for r in reviewer security; do n=$((n+1)); [ "$(run "$r" "readlink /proc/self/ns/net")" != "$host_net" ] || { fails=$((fails+1)); echo "WRONG $r: shares the host network"; }; done
+for r in reviewer security Explore; do n=$((n+1)); [ "$(run "$r" "readlink /proc/self/ns/net")" != "$host_net" ] || { fails=$((fails+1)); echo "WRONG $r: shares the host network"; }; done
 for r in researcher inspector verifier; do ok "$r network" "$(run "$r" "readlink /proc/self/ns/net")" "$host_net"; done
 
 # 5. Ways out of a read-only root: the user bus, docker, the ssh agent, devices.
@@ -74,6 +75,35 @@ printf '#!/bin/sh\n[ "$2" = rooty ] && echo "controlpath %s/.ssh/cm/sock" || ech
 ok "inspector: a listed host's open connection is masked, the others stay" "$(PATH=$F/bin:$PATH HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "stat -c %F $F/.ssh/cm/sock $F/.ssh/cm/sock2" | tr '\n' ' ')" "character special file regular empty file "
 echo "bad name!" > "$F/.config/orchestrate/ssh-hidden-hosts"
 has "inspector: an unreadable list denies" "$(PATH=$F/bin:$PATH HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm hook inspector "true")" '"permissionDecision": "deny"'
+rm "$F/.config/orchestrate/ssh-hidden-hosts"
+# Credential files: hidden from every sandboxed role, the network roles above all (defaults plus the user's list).
+mkdir -p "$F/.aws" "$F/.config/gh" "$F/.claude" "$F/mine"
+for p in .git-credentials .claude/.credentials.json .aws/credentials .config/gh/hosts.yml mine/key; do echo tok > "$F/$p"; done
+echo ok > "$F/plain"; printf '# my own\n~/mine\n' > "$F/.config/orchestrate/hidden-paths"
+for r in reviewer security researcher verifier; do
+  hasnt "$r: credential files do not read" "$(HOME=$F run "$r" "cat $F/.git-credentials $F/.claude/.credentials.json" 2>&1)" tok
+  ok "$r: credential dirs are empty" "$(HOME=$F run "$r" "ls -A $F/.aws $F/.config/gh $F/mine" | tr -d '\n')" "$F/.aws:$F/.config/gh:$F/mine:"
+done
+hasnt "inspector: credential file does not read" "$(HOME=$F ORCHESTRATE_SSH_SOCKET_DIR=$F/.ssh/cm run inspector "cat $F/.git-credentials" 2>&1)" tok
+ok "researcher: other files stay readable" "$(HOME=$F run researcher "cat $F/plain")" ok
+# The same paths through the Read, Grep and Glob tools, which no bwrap covers.
+tool() {   # $1 role ("" = main session), $2 tool name, $3 tool_input JSON -> permissionDecision or "none"
+  jq -n --arg r "$1" --arg t "$2" --argjson i "$3" --arg s "$sid" --arg p "$HOME/.claude/projects/$proj/$sid.jsonl" \
+    '{session_id:$s, transcript_path:$p, cwd:"/tmp", tool_name:$t, tool_input:$i} + (if $r=="" then {} else {agent_id:"a1", agent_type:$r} end)' \
+    | HOME=$F python3 -I "$H" | jq -rs '.[0].hookSpecificOutput.permissionDecision // "none"'
+}
+ok "researcher: Read of a credential file is denied" "$(tool researcher Read "{\"file_path\":\"$F/.git-credentials\"}")" deny
+ok "reviewer: Read inside a hidden dir is denied" "$(tool reviewer Read "{\"file_path\":\"$F/.aws/credentials\"}")" deny
+ok "reviewer: Read of a listed path is denied" "$(tool reviewer Read "{\"file_path\":\"$F/mine/key\"}")" deny
+ok "researcher: Grep over the home that holds them is denied" "$(tool researcher Grep "{\"pattern\":\"tok\",\"path\":\"$F\"}")" deny
+ok "researcher: Glob inside a hidden dir is denied" "$(tool researcher Glob "{\"pattern\":\"*\",\"path\":\"$F/.config/gh\"}")" deny
+ok "researcher: Read of an ordinary file passes" "$(tool researcher Read "{\"file_path\":\"$F/plain\"}")" none
+ok "researcher: Grep with no path (cwd /tmp) passes" "$(tool researcher Grep '{"pattern":"x"}')" none
+ok "main session: Read of a credential file is untouched" "$(tool "" Read "{\"file_path\":\"$F/.git-credentials\"}")" none
+ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
+printf 'relative/path\n' > "$F/.config/orchestrate/hidden-paths"
+ok "a hidden-paths line that is not ~/ or absolute denies" "$(HOME=$F hook reviewer "true" | jq -r .hookSpecificOutput.permissionDecision)" deny
+rm "$F/.config/orchestrate/hidden-paths"
 ok "no systemd user manager" "$(run reviewer 'systemd-run --user --scope --quiet true 2>/dev/null; echo $?' | tail -1 | tr -d 0)" "1"
 [ -S /run/docker.sock ] && ok "docker socket masked" "$(run reviewer 'test -S /run/docker.sock; echo $?')" 1
 # A daemon socket under $HOME: a read-only bind alone would still let connect() through.

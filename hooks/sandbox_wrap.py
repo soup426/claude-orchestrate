@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""PreToolUse hook for Bash: run the read-only agents' commands inside a bubblewrap sandbox and the memory cap.
+"""PreToolUse hook for Bash, Read, Grep and Glob: run the read-only agents' commands inside a bubblewrap sandbox and
+the memory cap, and keep credential files (HIDDEN plus ~/.config/orchestrate/hidden-paths) from them in both.
 
 For the reviewer, security, researcher, inspector and verifier agents it returns "allow" with the command rewritten
 to run under systemd-run (the cap) and bwrap: the whole disk read-only, a private /tmp, no user bus, docker socket or
@@ -11,7 +12,11 @@ Design and probes: docs/sandbox-design.md. Tests: tests/test_sandbox.sh (they ru
 """
 import json, os, re, shlex, shutil, stat, subprocess, sys, tempfile
 
-NET = {"reviewer": False, "security": False, "researcher": True, "inspector": True, "verifier": True}
+NET = {"reviewer": False, "security": False, "researcher": True, "inspector": True, "verifier": True,
+       "Explore": False}   # Explore: the built-in read-only search agent, which CLAUDE.md sends read-only reviews to
+# Credential files and dirs no sandboxed role reads; the main session and the worker keep them.
+HIDDEN = ("~/.claude/.credentials.json", "~/.git-credentials", "~/.netrc", "~/.aws", "~/.azure", "~/.config/gcloud",
+          "~/.config/gh", "~/.kube", "~/.docker/config.json", "~/.npmrc", "~/.pypirc")
 CAP = "systemd-run --user --scope --quiet --slice=orchestrate.slice -p MemoryMax=6G -p MemorySwapMax=1G -- "
 ENV = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "XDG_RUNTIME_DIR",
        "VIRTUAL_ENV")
@@ -33,6 +38,32 @@ def read_only_probe(cmd):
     r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "inspector_guard.py"), "--require-check", cmd],
                        capture_output=True, text=True, timeout=8)
     return r.returncode == 0, (r.stdout + r.stderr).strip()[:300]
+
+
+def hidden_paths():
+    """HIDDEN plus one ~/ or absolute path per line of ~/.config/orchestrate/hidden-paths, resolved (a symlink hides
+    its target). A bad line raises, and main() turns that into a deny."""
+    paths: list[str] = list(HIDDEN)
+    try:
+        with open(os.path.expanduser("~/.config/orchestrate/hidden-paths")) as f:
+            for line in f:
+                p = line.strip()
+                if p and not p.startswith("#"):
+                    if not p.startswith(("~/", "/")):
+                        raise ValueError(f"hidden-paths: {p[:60]!r} is not a ~/ or absolute path")
+                    paths.append(p)
+    except FileNotFoundError:
+        pass
+    return [os.path.realpath(os.path.expanduser(p)) for p in paths]
+
+
+def check_file_tool(tool, ti, cwd):
+    """Read, Grep, Glob: deny a path in a hidden one, and for Grep and Glob a search root that holds one."""
+    p = os.path.realpath(os.path.join(cwd, os.path.expanduser(ti.get("file_path") or ti.get("path") or ".")))
+    for h in hidden_paths():
+        if p == h or p.startswith(h + "/") or (tool != "Read" and h.startswith(p.rstrip("/") + "/")):
+            out("deny", f"sandbox_wrap: {tool} of {p} is refused: credential files are hidden from subagents")
+    sys.exit(0)
 
 
 def runs_ssh(cmd):
@@ -118,6 +149,8 @@ def main():
         sys.exit(0)
     try:
         ti = d["tool_input"]
+        if d.get("tool_name") in ("Read", "Grep", "Glob"):
+            check_file_tool(d["tool_name"], ti, d.get("cwd") or os.getcwd())
         cmd = ti["command"]
         sid, proj = d["session_id"], os.path.basename(os.path.dirname(d["transcript_path"]))
         if not re.fullmatch(r"[0-9a-f-]{36}", sid) or not re.fullmatch(r"[A-Za-z0-9_.-]+", proj) or proj in (".", ".."):
@@ -154,7 +187,8 @@ def main():
         # socket (docker, system bus, pcscd, app control sockets under $HOME) gets /dev/null bound over it.
         home, socks = os.path.expanduser("~"), socket_dir()
         keys = [d for d in (os.path.join(home, ".ssh"), os.path.join(home, ".gnupg")) if os.path.isdir(d)]
-        hidden = ["/tmp", run_dir] + keys + ([socks] if socks else [])   # masked or handled as whole directories below
+        secrets = [p for p in hidden_paths() if os.path.lexists(p)]
+        hidden = ["/tmp", run_dir] + keys + secrets + ([socks] if socks else [])   # masked as a whole below
         if NET[role]:
             hidden.append("/run/systemd/resolve")   # name lookups for the roles that keep the network
         for sock in find_sockets("/run", 3) + find_sockets(home, 5):
@@ -162,6 +196,8 @@ def main():
                 b += ["--ro-bind", "/dev/null", sock]
         for k in keys:
             b += ["--tmpfs", k]                            # private keys: no role gets them, a master socket needs none
+        for s in secrets:                                  # credential files: an empty dir, or /dev/null for a file
+            b += ["--tmpfs", s] if os.path.isdir(s) else ["--ro-bind", "/dev/null", s]
         in_ssh = bool(socks) and keys[:1] == [os.path.join(home, ".ssh")] and socks.startswith(keys[0] + "/")
         if ssh_ok:
             b += ["--ro-bind", ssh_config_copy(), "/etc/ssh"]
