@@ -114,7 +114,11 @@ mkdir -p "$F/sub"
 ok "researcher: a relative Glob pattern with .. is judged from its path" "$(tool researcher Glob "{\"pattern\":\"../.gnupg/*\",\"path\":\"$F/sub\"}")" deny
 ok "researcher: /proc/self/cwd is refused before it resolves" "$(tool researcher Read '{"file_path":"/proc/self/cwd/plain"}')" deny
 ok "researcher: an absolute Glob pattern from cwd = home is judged by the pattern alone" "$(tool researcher Glob "{\"pattern\":\"$F/sub/pla*\"}" "$F")" none
-ok "researcher: a relative Glob under a project dir from cwd = home passes" "$(tool researcher Glob '{"pattern":"sub/*"}' "$F")" none
+ok "researcher: a relative Glob is judged by the whole tree it searches (cwd = home)" "$(tool researcher Glob '{"pattern":"sub/*"}' "$F")" deny
+ok "researcher: a slashless name matches at any depth, so it is judged from cwd" "$(tool researcher Glob '{"pattern":"id_test"}' "$F")" deny
+ok "researcher: a slashless name from a project dir passes" "$(tool researcher Glob '{"pattern":"id_test"}' "$F/sub")" none
+ok "researcher: an absolute pattern with no wildcard searches its dir at any depth" "$(tool researcher Glob "{\"pattern\":\"$F/id_test\"}")" deny
+ok "researcher: an absolute literal pattern in a project dir passes" "$(tool researcher Glob "{\"pattern\":\"$F/sub/README.md\"}")" none
 ok "researcher: .. after a wildcard is refused" "$(tool researcher Glob '{"pattern":"*/../.ssh/*"}' "$F/sub")" deny
 ok "researcher: .. inside braces is refused" "$(tool researcher Glob '{"pattern":"{../.ssh,x}/*"}' "$F/sub")" deny
 ok "researcher: a relative Glob in a project passes" "$(tool researcher Glob "{\"pattern\":\"**/*.py\",\"path\":\"$F/sub\"}")" none

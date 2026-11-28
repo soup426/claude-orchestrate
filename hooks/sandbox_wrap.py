@@ -70,11 +70,13 @@ def check_file_tool(tool, ti, cwd):
         pat = os.path.expanduser(ti["pattern"])
         if re.search(r"(^|[/{,])\.\.($|[/},])", pat):   # .. after a wildcard or in braces would escape the root below
             out("deny", "sandbox_wrap: a Glob pattern with a .. segment is refused for subagents; pass path instead")
-        # As the tool does: an absolute pattern replaces path, and the search root is the part before the last "/"
-        # ahead of the first wildcard (so ".ss*/x" searches the dir that holds .ssh). That root is all Glob reads.
-        full = os.path.join(base, pat)
-        lit = re.split(r"[*?\[{]", full, maxsplit=1)[0]
-        roots = [lit if lit == full else (lit.rsplit("/", 1)[0] or "/")]
+        if os.path.isabs(pat):
+            # As the tool does: an absolute pattern replaces path, and the search root is the dir before the last
+            # "/" ahead of the first wildcard (so ".ss*/x" searches the dir that holds .ssh); the rest is matched
+            # under that root at any depth when it has no "/", so the root is judged as a whole tree.
+            roots = [re.split(r"[*?\[{]", pat, maxsplit=1)[0].rsplit("/", 1)[0] or "/"]
+        # A relative pattern keeps roots = [base]: rg matches a slashless glob at any depth, so the whole tree under
+        # path or cwd is what it can list, and without .. it cannot leave that tree.
     home = os.path.expanduser("~")
     deny = hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]
     for r in roots:
