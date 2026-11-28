@@ -105,11 +105,11 @@ ok "researcher: Read of an ssh key is denied" "$(tool researcher Read "{\"file_p
 ok "inspector: Read of an ssh key is denied" "$(tool inspector Read "{\"file_path\":\"$F/.ssh/id_test\"}")" deny
 ok "researcher: Read of ~/.gnupg is denied" "$(tool researcher Read "{\"file_path\":\"$F/.gnupg/pubring.kbx\"}")" deny
 ok "researcher: Read under /proc (the parent's environment) is denied" "$(tool researcher Read '{"file_path":"/proc/1/environ"}')" deny
-ok "researcher: Glob with an absolute pattern into a hidden dir is denied" "$(tool researcher Glob "{\"pattern\":\"$F/.aws/*\"}")" deny
-ok "researcher: Glob with an absolute pattern over the home is denied" "$(tool researcher Glob "{\"pattern\":\"$F/*/credentials\"}")" deny
-ok "researcher: an absolute Glob pattern overrides path, so it is judged too" "$(tool researcher Glob "{\"pattern\":\"$F/.ssh/*\",\"path\":\"/tmp\"}")" deny
-ok "researcher: a wildcard inside a segment (.ss*) is cut at the last slash" "$(tool researcher Glob "{\"pattern\":\"$F/.ss*/*\"}")" deny
-ok "researcher: a wildcard high up (/ho*) is cut at the last slash" "$(tool researcher Glob '{"pattern":"/ho*/x/.ssh/*"}')" deny
+ok "researcher: an absolute Glob pattern into a hidden dir is refused" "$(tool researcher Glob "{\"pattern\":\"$F/.aws/*\"}")" deny
+ok "researcher: an absolute Glob pattern over the home is refused" "$(tool researcher Glob "{\"pattern\":\"$F/*/credentials\"}")" deny
+ok "researcher: an absolute Glob pattern is refused whatever path says" "$(tool researcher Glob "{\"pattern\":\"$F/.ssh/*\",\"path\":\"/tmp\"}")" deny
+ok "researcher: an absolute pattern with a wildcard in a segment (.ss*) is refused" "$(tool researcher Glob "{\"pattern\":\"$F/.ss*/*\"}")" deny
+ok "researcher: an absolute pattern with a wildcard high up (/ho*) is refused" "$(tool researcher Glob '{"pattern":"/ho*/x/.ssh/*"}')" deny
 mkdir -p "$F/sub"
 ok "researcher: a relative Glob pattern with .. is judged from its path" "$(tool researcher Glob "{\"pattern\":\"../.gnupg/*\",\"path\":\"$F/sub\"}")" deny
 ok "researcher: /proc/self/cwd is refused before it resolves" "$(tool researcher Read '{"file_path":"/proc/self/cwd/plain"}')" deny
@@ -127,6 +127,12 @@ ok "researcher: an absolute literal pattern in a project dir is refused too" "$(
 ok "researcher: .. after a wildcard is refused" "$(tool researcher Glob '{"pattern":"*/../.ssh/*"}' "$F/sub")" deny
 ok "researcher: .. inside braces is refused" "$(tool researcher Glob '{"pattern":"{../.ssh,x}/*"}' "$F/sub")" deny
 ok "researcher: a relative Glob in a project passes" "$(tool researcher Glob "{\"pattern\":\"**/*.py\",\"path\":\"$F/sub\"}")" none
+ok "researcher: a harmless file_path does not hide a hidden path" "$(tool researcher Grep "{\"pattern\":\"x\",\"file_path\":\"$F/sub\",\"path\":\"$F/.ssh\"}")" deny
+ok "researcher: an absolute alternative in braces is refused" "$(tool researcher Glob "{\"pattern\":\"{$F/.ssh/*,a}\",\"path\":\"$F/sub\"}")" deny
+ok "researcher: a backslash pattern is refused" "$(tool researcher Glob '{"pattern":"\\\\x\\\\*"}' "$F/sub")" deny
+ok "researcher: a drive-letter pattern is refused" "$(tool researcher Glob '{"pattern":"C:/x/*"}' "$F/sub")" deny
+ok "researcher: a pattern with leading whitespace is refused" "$(tool researcher Glob '{"pattern":" /x/*"}' "$F/sub")" deny
+ok "researcher: braces of relative names still pass" "$(tool researcher Glob '{"pattern":"src/*.{py,sh}"}' "$F/sub")" none
 ok "researcher: a relative pattern with path elsewhere passes" "$(tool researcher Glob "{\"pattern\":\"pla*\",\"path\":\"$F/sub\"}")" none
 ok "worker: Read is untouched (it is not sandboxed)" "$(tool worker Read "{\"file_path\":\"$F/.git-credentials\"}")" none
 printf 'relative/path\n' > "$F/.config/orchestrate/hidden-paths"

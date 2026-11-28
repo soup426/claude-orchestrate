@@ -64,18 +64,20 @@ def check_file_tool(tool, ti, cwd):
     shortcut: a symlink in the scratchpad (which these roles can write) swapped to a hidden file after this check is
     not caught; upgrade by denying paths that cross a symlink under /tmp/claude-<uid> if that race ever matters.
     Hard links cannot reach a hidden file: the scratchpad is another mount (EXDEV)."""
-    base = os.path.join(cwd, os.path.expanduser(ti.get("file_path") or ti.get("path") or "."))
-    roots = [base]
+    # Every path key present is judged, so a harmless file_path cannot stand in for a hidden path.
+    roots = [os.path.join(cwd, os.path.expanduser(v)) for v in (ti.get("file_path"), ti.get("path")) if v] or [cwd]
     if tool == "Glob" and ti.get("pattern"):
         pat = os.path.expanduser(ti["pattern"])
         if re.search(r"(^|[/{,])\.\.($|[/},])", pat):   # .. after a wildcard or in braces would escape the root below
             out("deny", "sandbox_wrap: a Glob pattern with a .. segment is refused for subagents; pass path instead")
-        if os.path.isabs(pat):
+        if os.path.isabs(pat) or re.search(r"^\s|\\|^[A-Za-z]:|[{,]\s*[/~]", pat):
             # The tool cuts its own search root out of an absolute pattern (dirname, wildcards, trailing slashes);
-            # modelling that missed a case five times, so subagents give the directory as path instead.
+            # modelling that missed a case five times, so subagents give the directory as path instead. Forms the
+            # tool may also read as absolute (a backslash, a drive letter, leading space, an absolute brace
+            # alternative) are refused the same way.
             out("deny", "sandbox_wrap: an absolute Glob pattern is refused for subagents; pass the directory as path"
                 " and a relative pattern")
-        # A relative pattern keeps roots = [base]: rg matches a slashless glob at any depth, so the whole tree under
+        # A relative pattern keeps roots (path, or cwd): rg matches a slashless glob at any depth, so the whole tree under
         # path or cwd is what it can list, and without .. it cannot leave that tree.
     home = os.path.expanduser("~")
     deny = hidden_paths() + [os.path.realpath(os.path.join(home, k)) for k in (".ssh", ".gnupg")] + ["/proc"]
